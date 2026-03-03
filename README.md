@@ -6,6 +6,7 @@
 [![Dart](https://img.shields.io/badge/Dart-3.11-0175C2?logo=dart)](https://dart.dev)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20Web%20%7C%20Desktop-green)]()
+[![Release](https://img.shields.io/github/v/release/santhoshunt/fuelpulse)](https://github.com/santhoshunt/fuelpulse/releases/latest)
 
 ---
 
@@ -75,6 +76,16 @@ lib/
     ├── color_swatch_picker.dart # Brand colour picker
     └── mode_switch.dart        # Theme mode toggle
 ```
+
+## Download
+
+Pre-built Android APKs are available on the [Releases](https://github.com/santhoshunt/fuelpulse/releases/latest) page.
+
+| APK | Architecture | Notes |
+|---|---|---|
+| [app-arm64-v8a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.0.0/app-arm64-v8a-release.apk) | ARM64 | Most modern Android phones (recommended) |
+| [app-armeabi-v7a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.0.0/app-armeabi-v7a-release.apk) | ARMv7 | Older 32-bit Android phones |
+| [app-x86_64-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.0.0/app-x86_64-release.apk) | x86_64 | Emulators / Intel-based devices |
 
 ## Getting Started
 
