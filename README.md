@@ -13,8 +13,6 @@
 
 FuelPulse helps you track every fuel fill-up, calculate **real-world mileage** per segment, compare efficiency across fuel brands, and estimate how much fuel is left in your tank — all **100 % offline** with no accounts or cloud sync.
 
-A companion **PWA** (Progressive Web App) is also included for quick browser-based access.
-
 ## Features
 
 | Feature | Description |
@@ -28,7 +26,6 @@ A companion **PWA** (Progressive Web App) is also included for quick browser-bas
 | **Dark glossy UI** | Performant CustomPaint-based glossy card design — no BackdropFilter overhead |
 | **Smooth transitions** | Fade + slide page routes, scroll-aware staggered list animations |
 | **Offline-first** | SQLite local database — works without internet |
-| **PWA companion** | Lightweight browser version using localStorage |
 
 ## Screenshots
 
@@ -44,7 +41,6 @@ A companion **PWA** (Progressive Web App) is also included for quick browser-bas
 - **Preferences:** [shared_preferences](https://pub.dev/packages/shared_preferences)
 - **CSV:** [csv](https://pub.dev/packages/csv) + [share_plus](https://pub.dev/packages/share_plus)
 - **Theming:** Custom `ThemeManager` with dynamic brand colours via [flutter_colorpicker](https://pub.dev/packages/flutter_colorpicker)
-- **PWA:** Vanilla HTML/CSS/JS + Service Worker
 
 ## Project Structure
 
@@ -112,10 +108,6 @@ The ARM64 APK will be at:
 ```
 build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 ```
-
-## PWA
-
-A standalone Progressive Web App lives in the `../fuel-efficiency-pwa/` directory. Open `index.html` in any browser or deploy to any static host.
 
 ## How Efficiency Is Calculated
 
