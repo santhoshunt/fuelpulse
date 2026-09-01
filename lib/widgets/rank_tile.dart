@@ -1,27 +1,34 @@
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
-import 'brand_badge.dart';
 import 'glossy_card.dart';
 
-/// Single row in brand ranking list.
-class BrandRankTile extends StatelessWidget {
+/// Single row in a ranking list (brands, fuel types).
+class RankTile extends StatelessWidget {
   final int rank;
-  final String brand;
+  final String label;
   final int fillCount;
   final double totalLiters;
   final double efficiency;
   final double bestEfficiency;
   final double deltaVsOverall;
 
-  const BrandRankTile({
+  /// Rendered before the delta chip; when null, the label renders as text.
+  final Widget? leading;
+
+  /// Extra strings appended to the bottom detail row after fills/litres.
+  final List<String> extraDetails;
+
+  const RankTile({
     super.key,
     required this.rank,
-    required this.brand,
+    required this.label,
     required this.fillCount,
     required this.totalLiters,
     required this.efficiency,
     required this.bestEfficiency,
     required this.deltaVsOverall,
+    this.leading,
+    this.extraDetails = const [],
   });
 
   @override
@@ -51,13 +58,18 @@ class BrandRankTile extends StatelessWidget {
                   ),
                 ),
               ),
-              // Brand badge — Expanded (not Spacer) so a long name
+              // Leading — Expanded (not Spacer) so a long label
               // ellipsizes instead of crowding the delta chip.
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 12),
-                  child: BrandBadge(
-                      brandName: brand, showLabel: true, size: 28),
+                  child: leading ??
+                      Text(
+                        label,
+                        style: const TextStyle(
+                            color: kTextPrimary, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                 ),
               ),
               // Delta
@@ -85,7 +97,7 @@ class BrandRankTile extends StatelessWidget {
               // km/L value
               Text(
                 '${efficiency.toStringAsFixed(1)} km/L',
-                style: TextStyle(
+                style: const TextStyle(
                   color: kTextPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
@@ -134,6 +146,16 @@ class BrandRankTile extends StatelessWidget {
                 '${totalLiters.toStringAsFixed(1)} L total',
                 style: const TextStyle(color: kTextMuted, fontSize: 12),
               ),
+              for (final detail in extraDetails) ...[
+                const SizedBox(width: 16),
+                Flexible(
+                  child: Text(
+                    detail,
+                    style: const TextStyle(color: kTextMuted, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ],
           ),
         ],

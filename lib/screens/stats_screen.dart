@@ -3,7 +3,8 @@ import '../db/database_helper.dart';
 import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
-import '../widgets/brand_rank_tile.dart';
+import '../widgets/brand_badge.dart';
+import '../widgets/rank_tile.dart';
 import '../widgets/stat_card.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class StatsScreen extends StatefulWidget {
 class _StatsScreenState extends State<StatsScreen> {
   final _db = DatabaseHelper();
   BrandComparisonResult? _result;
+  FuelTypeComparisonResult? _fuelTypeResult;
   CostStats? _costStats;
   int _logCount = 0;
   bool _loading = true;
@@ -30,6 +32,7 @@ class _StatsScreenState extends State<StatsScreen> {
   Future<void> _loadStats() async {
     final chrono = await _db.getAllLogsChrono();
     final result = calculateBrandEfficiency(chrono);
+    final fuelTypeResult = calculateFuelTypeEfficiency(chrono);
     final costStats = calculateCostStats(chrono);
 
     // Check if there's at least 1 completed segment
@@ -37,6 +40,7 @@ class _StatsScreenState extends State<StatsScreen> {
 
     setState(() {
       _result = result;
+      _fuelTypeResult = fuelTypeResult;
       _costStats = costStats;
       _logCount = chrono.length;
       _hasSegments = hasSegments;
@@ -266,9 +270,11 @@ class _StatsScreenState extends State<StatsScreen> {
             ...r.rankings.asMap().entries.map((e) {
               final idx = e.key;
               final brand = e.value;
-              return BrandRankTile(
+              return RankTile(
                 rank: idx + 1,
-                brand: brand.brand,
+                label: brand.brand,
+                leading: BrandBadge(
+                    brandName: brand.brand, showLabel: true, size: 28),
                 fillCount: brand.fillCount,
                 totalLiters: brand.totalLiters,
                 efficiency: brand.weightedEfficiency,
@@ -277,8 +283,66 @@ class _StatsScreenState extends State<StatsScreen> {
               );
             }),
           ],
+
+          // ── Fuel type ranking ─────────────────────────
+          // One fuel type means nothing to compare, so the section only
+          // appears once a second type has completed segments.
+          if (_hasSegments &&
+              (_fuelTypeResult?.rankings.length ?? 0) >= 2) ...[
+            const SizedBox(height: 18),
+            _sectionHeader('Fuel Type Ranking', accent),
+            const SizedBox(height: 14),
+            ..._fuelTypeResult!.rankings.asMap().entries.map((e) {
+              final idx = e.key;
+              final ft = e.value;
+              return RankTile(
+                rank: idx + 1,
+                label: ft.fuelType,
+                leading: _fuelTypeLabel(ft.fuelType, accent),
+                fillCount: ft.fillCount,
+                totalLiters: ft.totalLiters,
+                efficiency: ft.weightedEfficiency,
+                bestEfficiency:
+                    _fuelTypeResult!.rankings.first.weightedEfficiency,
+                deltaVsOverall: ft.deltaVsOverall,
+                extraDetails: [
+                  if (ft.avgPricePerLitre != null)
+                    '₹${ft.avgPricePerLitre!.toStringAsFixed(2)}/L avg',
+                  if (ft.costPerKm != null)
+                    '₹${ft.costPerKm!.toStringAsFixed(2)}/km',
+                ],
+              );
+            }),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _fuelTypeLabel(String fuelType, Color accent) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: Icon(Icons.local_fire_department_outlined,
+              size: 16, color: accent),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            fuelType,
+            style: const TextStyle(color: kTextPrimary, fontSize: 13),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }

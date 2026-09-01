@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../models/theme_preference.dart';
+import '../services/backup_file.dart';
 import '../services/backup_payload.dart';
 import '../services/drive_backup_service.dart';
 import '../utils/constants.dart';
@@ -15,6 +16,34 @@ import '../utils/theme_manager.dart' as tm;
 import '../widgets/add_fuel_type_dialog.dart';
 import '../widgets/brand_badge.dart';
 import '../widgets/color_swatch_picker.dart';
+
+/// Merge-or-replace choice shared by the Drive restore and the backup file
+/// import. Returns 'merge', 'replace', or null when cancelled.
+Future<String?> showRestoreModeDialog(BuildContext context,
+    {required String title, required int currentCount}) {
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: Text(
+        'Merge adds backup entries not already on this device (matched '
+        'by id). Replace deletes your current $currentCount '
+        '${currentCount == 1 ? 'entry' : 'entries'}, then restores the '
+        'backup — including settings, fuel types and pump brands.',
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, 'merge'),
+            child: const Text('Merge')),
+        ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, 'replace'),
+            child: const Text('Replace')),
+      ],
+    ),
+  );
+}
 
 class SettingsScreen extends StatefulWidget {
   final ThemePreference currentTheme;
@@ -213,6 +242,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _exportBackup() async {
+    if (await _db.getLogCount() == 0) {
+      _showSnack('No data to export.');
+      return;
+    }
+    try {
+      await exportBackupFile();
+    } catch (e) {
+      _showSnack('Backup export failed: $e');
+    }
+  }
+
+  Future<void> _importBackup() async {
+    try {
+      final data = await pickBackupFile();
+      if (data == null) return; // cancelled
+      final count = await _db.getLogCount();
+      if (!mounted) return;
+      final mode = await showRestoreModeDialog(context,
+          title: 'Import Backup File', currentCount: count);
+      if (mode == null) return;
+      final restored = await restoreBackup(data, replace: mode == 'replace');
+      if (mode == 'replace') await _onRestoreReplace();
+      _showSnack(
+          'Restored $restored ${restored == 1 ? 'entry' : 'entries'}.');
+    } on FormatException catch (e) {
+      _showSnack(e.message);
+    } catch (e) {
+      _showSnack('Import failed: $e');
+    }
+  }
+
   Future<void> _deleteAllData() async {
     final text = _deleteConfirmController.text.trim();
     if (text != 'DELETE') {
@@ -225,10 +286,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _showSnack('All data deleted.');
   }
 
-  /// A replace-mode Drive restore rewrote settings prefs (theme, capacity),
-  /// fuel types and pump brands — reload every piece of Settings state that
-  /// mirrors them.
-  Future<void> _onDriveRestoreReplace() async {
+  /// A replace-mode restore (Drive or backup file) rewrote settings prefs
+  /// (theme, capacity), fuel types and pump brands — reload every piece of
+  /// Settings state that mirrors them.
+  Future<void> _onRestoreReplace() async {
     final theme = await tm.loadTheme();
     if (!mounted) return;
     setState(() => _theme = theme);
@@ -357,13 +418,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _actionCard(
+                    icon: Icons.archive_outlined,
+                    label: 'Export Backup',
+                    onTap: _exportBackup,
+                    accent: accent,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _actionCard(
+                    icon: Icons.unarchive_outlined,
+                    label: 'Import Backup',
+                    onTap: _importBackup,
+                    accent: accent,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Backup files (.json.gz) carry everything: entries with costs, '
+              'fuel types, pump brands and settings. CSV carries entries only.',
+              style: TextStyle(color: kTextMuted, fontSize: 12),
+            ),
             const SizedBox(height: 32),
 
             // ── Google Drive Backup (Android only) ───────
             if (!kIsWeb && Platform.isAndroid) ...[
               _sectionHeader('Google Drive Backup'),
               const SizedBox(height: 12),
-              _DriveBackupSection(onRestoredReplace: _onDriveRestoreReplace),
+              _DriveBackupSection(onRestoredReplace: _onRestoreReplace),
               const SizedBox(height: 32),
             ],
 
@@ -671,29 +760,8 @@ class _DriveBackupSectionState extends State<_DriveBackupSection> {
     if (_restoring) return;
     final count = await _db.getLogCount();
     if (!mounted) return;
-    final mode = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Restore from Drive'),
-        content: Text(
-          'Merge adds backup entries not already on this device (matched '
-          'by id). Replace deletes your current $count '
-          '${count == 1 ? 'entry' : 'entries'}, then restores the backup — '
-          'including settings, fuel types and pump brands.',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, 'merge'),
-              child: const Text('Merge')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, 'replace'),
-              child: const Text('Replace')),
-        ],
-      ),
-    );
+    final mode = await showRestoreModeDialog(context,
+        title: 'Restore from Drive', currentCount: count);
     if (mode == null) return;
 
     setState(() => _restoring = true);

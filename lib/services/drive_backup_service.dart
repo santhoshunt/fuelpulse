@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data' show BytesBuilder;
 
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
@@ -9,28 +7,10 @@ import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
+import 'backup_codec.dart';
 import 'backup_payload.dart';
 
-/// Gzips the backup map. Top-level so [compute] can ship it to a worker
-/// isolate — a large log history gzips ~10x smaller than its JSON.
-Uint8List encodeBackupGz(Map<String, dynamic> data) =>
-    Uint8List.fromList(gzip.encode(utf8.encode(jsonEncode(data))));
-
-/// Inverse of [encodeBackupGz]. Throws [FormatException] on anything that
-/// isn't a gzipped JSON object.
-Map<String, dynamic> decodeBackupGz(Uint8List bytes) {
-  final List<int> raw;
-  try {
-    raw = gzip.decode(bytes);
-  } catch (_) {
-    throw const FormatException('Not a gzip backup file');
-  }
-  final decoded = jsonDecode(utf8.decode(raw));
-  if (decoded is! Map<String, dynamic>) {
-    throw const FormatException('Not a FuelPulse backup file');
-  }
-  return decoded;
-}
+export 'backup_codec.dart' show encodeBackupGz, decodeBackupGz;
 
 /// A downloaded cloud backup: the parsed payload plus when it was uploaded,
 /// so the confirm UI can say which backup is about to be imported.
@@ -70,7 +50,7 @@ class DriveBackupService {
   static const _lastErrorKey = 'drive_last_error';
 
   static const folderName = 'FuelPulse Backups';
-  static const _filePrefix = 'fuelpulse_backup_';
+  static const _filePrefix = backupFilePrefix;
 
   /// How many backups stay in Drive; older ones are pruned after each upload.
   static const keepBackups = 7;
@@ -187,10 +167,7 @@ class DriveBackupService {
 
   // --- Backup -----------------------------------------------------------------
 
-  @visibleForTesting
-  static String backupFileName(DateTime now) =>
-      '$_filePrefix${now.toIso8601String().split('.').first.replaceAll(':', '-')}'
-      '.json.gz';
+  static String backupFileName(DateTime now) => buildBackupFileName(now);
 
   /// A second uploadNow while one is in flight joins it instead of running a
   /// duplicate (a startup-scheduled upload racing a manual "Back up now"
