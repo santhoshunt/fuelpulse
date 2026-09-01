@@ -51,9 +51,15 @@ class BrandRankTile extends StatelessWidget {
                   ),
                 ),
               ),
-              // Brand badge
-              BrandBadge(brandName: brand, showLabel: true, size: 28),
-              const Spacer(),
+              // Brand badge — Expanded (not Spacer) so a long name
+              // ellipsizes instead of crowding the delta chip.
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: BrandBadge(
+                      brandName: brand, showLabel: true, size: 28),
+                ),
+              ),
               // Delta
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

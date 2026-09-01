@@ -5,6 +5,11 @@ import '../models/theme_preference.dart';
 const String kTankCapacityKey = 'fuel_tank_cap';
 const String kThemeAccentKey = 'fuel_theme_accent';
 const String kThemeLightKey = 'fuel_theme_light';
+const String kFuelTypesKey = 'fuel_fuel_types';
+const String kPumpBrandsKey = 'fuel_pump_brands';
+
+// ── Fuel types ───────────────────────────────────────────────────────
+const String kDefaultFuelType = 'Normal';
 
 // ── Brand configuration ──────────────────────────────────────────────
 class BrandConfig {
@@ -67,23 +72,31 @@ const BrandConfig kOtherBrand = BrandConfig(
   textColor: Colors.white,
 );
 
-/// Look up brand config by name (case-insensitive). Falls back to Other.
+/// Look up brand config by name (case-insensitive). Unknown custom brands
+/// get a neutral badge with an initials abbreviation.
 BrandConfig getBrandConfig(String brandName) {
-  final lower = brandName.toLowerCase().trim();
+  final trimmed = brandName.trim();
+  final lower = trimmed.toLowerCase();
   for (final b in kBrands) {
     if (b.name.toLowerCase() == lower) return b;
   }
   // Alias matching
   if (lower == 'hindustan petroleum') return kBrands[1]; // HP
   if (lower.contains('nayara')) return kBrands[4];
-  return kOtherBrand;
+  if (trimmed.isEmpty || lower == 'other') return kOtherBrand;
+  final words = trimmed.split(RegExp(r'\s+'));
+  final abbr = words.take(2).map((w) => w[0].toUpperCase()).join();
+  return BrandConfig(
+    name: trimmed,
+    abbreviation: abbr,
+    background: kOtherBrand.background,
+    textColor: kOtherBrand.textColor,
+  );
 }
 
-/// Dropdown brand names including "Other".
-final List<String> kBrandDropdownItems = [
-  ...kBrands.map((b) => b.name),
-  'Other',
-];
+/// Seed list offered before the user customizes their pump brands.
+final List<String> kDefaultPumpBrands =
+    List.unmodifiable(kBrands.map((b) => b.name));
 
 // ── Theme presets ────────────────────────────────────────────────────
 class ThemePresetSwatch {

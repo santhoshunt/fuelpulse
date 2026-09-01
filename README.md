@@ -83,9 +83,9 @@ Pre-built Android APKs are available on the [Releases](https://github.com/santho
 
 | APK | Architecture | Notes |
 |---|---|---|
-| [app-arm64-v8a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.0.0/app-arm64-v8a-release.apk) | ARM64 | Most modern Android phones (recommended) |
-| [app-armeabi-v7a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.0.0/app-armeabi-v7a-release.apk) | ARMv7 | Older 32-bit Android phones |
-| [app-x86_64-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.0.0/app-x86_64-release.apk) | x86_64 | Emulators / Intel-based devices |
+| [app-arm64-v8a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.1.0/app-arm64-v8a-release.apk) | ARM64 | Most modern Android phones (recommended) |
+| [app-armeabi-v7a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.1.0/app-armeabi-v7a-release.apk) | ARMv7 | Older 32-bit Android phones |
+| [app-x86_64-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.1.0/app-x86_64-release.apk) | x86_64 | Emulators / Intel-based devices |
 
 ## Getting Started
 

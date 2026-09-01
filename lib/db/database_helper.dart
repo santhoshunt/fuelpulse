@@ -20,8 +20,9 @@ class DatabaseHelper {
     final path = join(dbPath, 'fuelpulse.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -34,9 +35,21 @@ class DatabaseHelper {
         liters REAL NOT NULL,
         pumpBrand TEXT NOT NULL DEFAULT '',
         fullTank INTEGER NOT NULL DEFAULT 1,
-        notes TEXT NOT NULL DEFAULT ''
+        notes TEXT NOT NULL DEFAULT '',
+        fuelType TEXT NOT NULL DEFAULT 'Normal',
+        totalCost REAL,
+        pricePerLitre REAL
       )
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+          "ALTER TABLE fuel_logs ADD COLUMN fuelType TEXT NOT NULL DEFAULT 'Normal'");
+      await db.execute('ALTER TABLE fuel_logs ADD COLUMN totalCost REAL');
+      await db.execute('ALTER TABLE fuel_logs ADD COLUMN pricePerLitre REAL');
+    }
   }
 
   /// Insert a new fuel log entry.
@@ -106,6 +119,30 @@ class DatabaseHelper {
   Future<void> deleteAllLogs() async {
     final db = await database;
     await db.delete('fuel_logs');
+  }
+
+  /// Rename a fuel type on every log referencing it.
+  /// Returns the number of updated rows.
+  Future<int> renameFuelType(String from, String to) async {
+    final db = await database;
+    return db.update(
+      'fuel_logs',
+      {'fuelType': to},
+      where: 'fuelType = ?',
+      whereArgs: [from],
+    );
+  }
+
+  /// Rename a pump brand on every log referencing it.
+  /// Returns the number of updated rows.
+  Future<int> renamePumpBrand(String from, String to) async {
+    final db = await database;
+    return db.update(
+      'fuel_logs',
+      {'pumpBrand': to},
+      where: 'pumpBrand = ?',
+      whereArgs: [from],
+    );
   }
 
   /// Insert multiple logs (for CSV import).

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../utils/constants.dart';
+import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
 import '../widgets/brand_rank_tile.dart';
 import '../widgets/stat_card.dart';
@@ -15,8 +16,10 @@ class StatsScreen extends StatefulWidget {
 class _StatsScreenState extends State<StatsScreen> {
   final _db = DatabaseHelper();
   BrandComparisonResult? _result;
+  CostStats? _costStats;
+  int _logCount = 0;
   bool _loading = true;
-  bool _hasEnoughData = false;
+  bool _hasSegments = false;
 
   @override
   void initState() {
@@ -27,13 +30,16 @@ class _StatsScreenState extends State<StatsScreen> {
   Future<void> _loadStats() async {
     final chrono = await _db.getAllLogsChrono();
     final result = calculateBrandEfficiency(chrono);
+    final costStats = calculateCostStats(chrono);
 
     // Check if there's at least 1 completed segment
     final hasSegments = result.totalKm > 0 && result.totalLiters > 0;
 
     setState(() {
       _result = result;
-      _hasEnoughData = hasSegments;
+      _costStats = costStats;
+      _logCount = chrono.length;
+      _hasSegments = hasSegments;
       _loading = false;
     });
   }
@@ -52,7 +58,9 @@ class _StatsScreenState extends State<StatsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : !_hasEnoughData
+          // Cost data can exist before any completed efficiency segment,
+          // so the page shows whenever either has something to render.
+          : !_hasSegments && (_costStats?.totalSpend ?? 0) <= 0
               ? _buildNotEnoughData()
               : _buildStats(accent),
     );
@@ -88,6 +96,31 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
+  Widget _sectionHeader(String title, Color accent) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 18,
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+            color: kTextPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStats(Color accent) {
     final r = _result!;
 
@@ -96,6 +129,7 @@ class _StatsScreenState extends State<StatsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_hasSegments) ...[
           // 2×2 summary grid
           IntrinsicHeight(
             child: Row(
@@ -155,16 +189,73 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
           ),
           const SizedBox(height: 28),
+          ],
 
-          // Brand ranking header
-          const Text(
-            'Brand Ranking',
-            style: TextStyle(
-              color: kTextPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+          // ── Cost analytics ────────────────────────────
+          if ((_costStats?.totalSpend ?? 0) > 0) ...[
+            _sectionHeader('Cost Analytics', accent),
+            const SizedBox(height: 14),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      emoji: '💰',
+                      label: 'Total Spend',
+                      value: '₹${formatMoney(_costStats!.totalSpend)}',
+                      subtitle:
+                          '${_costStats!.costLogCount} of $_logCount fill-ups have cost',
+                      borderColor: accent.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: StatCard(
+                      emoji: '⛽',
+                      label: 'Avg Price',
+                      value: _costStats!.avgPricePerLitre != null
+                          ? '₹${_costStats!.avgPricePerLitre!.toStringAsFixed(2)}/L'
+                          : '—',
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(height: 12),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      emoji: '🛣️',
+                      label: 'Cost per km',
+                      value: _costStats!.costPerKm != null
+                          ? '₹${_costStats!.costPerKm!.toStringAsFixed(2)}/km'
+                          : '—',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: StatCard(
+                      emoji: '📅',
+                      label: 'This Month',
+                      value: '₹${formatMoney(_costStats!.monthSpend)}',
+                      subtitle: _costStats!.avgMonthlySpend != null
+                          ? 'avg ₹${formatMoney(_costStats!.avgMonthlySpend!)}/month'
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+          ],
+
+          if (_hasSegments) ...[
+          // Brand ranking header
+          _sectionHeader('Brand Ranking', accent),
           const SizedBox(height: 14),
 
           // Brand ranking list
@@ -185,6 +276,7 @@ class _StatsScreenState extends State<StatsScreen> {
                 deltaVsOverall: brand.deltaVsOverall,
               );
             }),
+          ],
         ],
       ),
     );

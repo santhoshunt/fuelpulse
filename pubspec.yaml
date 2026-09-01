@@ -1,7 +1,7 @@
 name: fuelpulse
 description: "FuelPulse — Offline fuel fill-up tracker with km/L efficiency and brand comparison."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ^3.11.0
@@ -15,10 +15,17 @@ dependencies:
   shared_preferences: ^2.2.0
   intl: ^0.19.0
   csv: ^6.0.0
-  share_plus: ^9.0.0
-  file_picker: ^8.0.0
+  share_plus: ^12.0.2
+  file_picker: ^10.1.0
   flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.0
+  # Google Drive backup. Pinned to the 6.x google_sign_in API surface
+  # (constructor + signIn/signInSilently + authenticatedClient extension) —
+  # 7.x replaced it with a singleton/authorization-client model and the
+  # Drive service is written against 6.x, mirroring the expense tracker.
+  google_sign_in: ^6.2.0
+  googleapis: ^12.0.0
+  extension_google_sign_in_as_googleapis_auth: ^2.0.0
 
 dev_dependencies:
   flutter_test:

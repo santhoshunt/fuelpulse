@@ -61,6 +61,10 @@ class FuelLogTile extends StatelessWidget {
                               BrandBadge(brandName: log.pumpBrand, size: 26),
                               const SizedBox(width: 10),
                               _fullPartialTag(),
+                              if (log.fuelType != kDefaultFuelType) ...[
+                                const SizedBox(width: 6),
+                                _fuelTypeTag(),
+                              ],
                             ],
                           ),
                         ],
@@ -88,6 +92,12 @@ class FuelLogTile extends StatelessWidget {
                   children: [
                     _dataChip(Icons.speed, '${log.odometer} km'),
                     _dataChip(Icons.local_gas_station, '${log.liters.toStringAsFixed(1)} L'),
+                    if (log.totalCost != null)
+                      _dataChip(Icons.currency_rupee,
+                          '₹${log.totalCost!.toStringAsFixed(0)}'),
+                    if (log.pricePerLitre != null)
+                      _dataChip(Icons.sell_outlined,
+                          '₹${log.pricePerLitre!.toStringAsFixed(2)}/L'),
                     if (distanceToNext != null)
                       _dataChip(Icons.straighten, '$distanceToNext km'),
                     if (tankLevel != null && tankCapacity > 0)
@@ -156,6 +166,25 @@ class FuelLogTile extends StatelessWidget {
         isFull ? 'FULL' : 'PARTIAL',
         style: TextStyle(
           color: isFull ? const Color(0xFFFFD60A) : const Color(0xFFF59E0B),
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _fuelTypeTag() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        log.fuelType.toUpperCase(),
+        style: const TextStyle(
+          color: kTextSecondary,
           fontSize: 10,
           fontWeight: FontWeight.bold,
           letterSpacing: 0.5,

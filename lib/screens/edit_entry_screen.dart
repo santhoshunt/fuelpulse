@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
 import '../utils/constants.dart';
+import '../utils/cost_calculator.dart';
+import '../utils/fuel_type_manager.dart';
+import '../utils/pump_brand_manager.dart';
+import '../widgets/add_fuel_type_dialog.dart';
+import '../widgets/brand_badge.dart';
 import '../widgets/mode_switch.dart';
+import '../widgets/option_picker.dart';
 
 class EditEntryScreen extends StatefulWidget {
   final String logId;
@@ -24,18 +30,31 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
   final _odoController = TextEditingController();
   final _litersController = TextEditingController();
   final _notesController = TextEditingController();
-  final _customBrandController = TextEditingController();
+  final _priceController = TextEditingController();
+  final _costController = TextEditingController();
 
+  List<String> _pumpBrands = List.of(kDefaultPumpBrands);
   String _selectedBrand = 'Shell';
-  bool _isOtherBrand = false;
   bool _fullTank = true;
   bool _saving = false;
   bool _loading = true;
+
+  List<String> _fuelTypes = [kDefaultFuelType];
+  String _selectedFuelType = kDefaultFuelType;
+
+  // Guards against listener ping-pong while one cost field updates the other.
+  bool _syncingCost = false;
+  // Which cost field the user typed last — litres edits recompute the OTHER
+  // one. Defaults to 'total' here: the receipt total is what people verify.
+  String _lastCostEdited = 'total';
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _priceController.addListener(_onPriceChanged);
+    _costController.addListener(_onCostChanged);
+    _litersController.addListener(_onLitersChangedForCost);
   }
 
   Future<void> _loadData() async {
@@ -51,25 +70,30 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     int? prevOdo;
     if (idx > 0) prevOdo = chrono[idx - 1].odometer;
 
-    // Determine if brand is a known brand or "Other"
-    final knownBrand = kBrandDropdownItems.contains(log.pumpBrand);
+    final types = await loadFuelTypes();
+    // Tolerate a type that was deleted/renamed away — the log keeps its
+    // string, so inject it locally for display.
+    if (!types.contains(log.fuelType)) types.insert(0, log.fuelType);
+
+    final brands = await loadPumpBrands();
+    if (!brands.contains(log.pumpBrand)) brands.insert(0, log.pumpBrand);
 
     setState(() {
       _original = log;
       _prevOdometer = prevOdo;
+      // Prefill without triggering the cost-linking listeners.
+      _syncingCost = true;
       _odoController.text = log.odometer.toString();
       _litersController.text = log.liters.toString();
+      _priceController.text = log.pricePerLitre?.toString() ?? '';
+      _costController.text = log.totalCost?.toString() ?? '';
+      _syncingCost = false;
       _notesController.text = log.notes;
       _fullTank = log.fullTank;
-
-      if (knownBrand && log.pumpBrand != 'Other') {
-        _selectedBrand = log.pumpBrand;
-        _isOtherBrand = false;
-      } else {
-        _selectedBrand = 'Other';
-        _isOtherBrand = true;
-        _customBrandController.text = log.pumpBrand;
-      }
+      _fuelTypes = types;
+      _selectedFuelType = log.fuelType;
+      _pumpBrands = brands;
+      _selectedBrand = log.pumpBrand;
       _loading = false;
     });
   }
@@ -79,8 +103,143 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     _odoController.dispose();
     _litersController.dispose();
     _notesController.dispose();
-    _customBrandController.dispose();
+    _priceController.dispose();
+    _costController.dispose();
     super.dispose();
+  }
+
+  void _onPriceChanged() {
+    if (_syncingCost) return;
+    _lastCostEdited = 'price';
+    _syncingCost = true;
+    if (_priceController.text.trim().isEmpty) {
+      // A derived total must not outlive the price it came from.
+      _costController.text = '';
+    } else {
+      final total = computeTotalCost(
+        double.tryParse(_priceController.text.trim()),
+        double.tryParse(_litersController.text.trim()),
+      );
+      if (total != null) _costController.text = total.toStringAsFixed(2);
+    }
+    _syncingCost = false;
+  }
+
+  void _onCostChanged() {
+    if (_syncingCost) return;
+    _lastCostEdited = 'total';
+    _syncingCost = true;
+    if (_costController.text.trim().isEmpty) {
+      _priceController.text = '';
+    } else {
+      final price = computePricePerLitre(
+        double.tryParse(_costController.text.trim()),
+        double.tryParse(_litersController.text.trim()),
+      );
+      if (price != null) _priceController.text = price.toStringAsFixed(2);
+    }
+    _syncingCost = false;
+  }
+
+  void _onLitersChangedForCost() {
+    if (_syncingCost) return;
+    final liters = double.tryParse(_litersController.text.trim());
+    if (liters == null || liters <= 0) return;
+    _syncingCost = true;
+    if (_lastCostEdited == 'price') {
+      final total = computeTotalCost(
+          double.tryParse(_priceController.text.trim()), liters);
+      if (total != null) _costController.text = total.toStringAsFixed(2);
+    } else {
+      final price = computePricePerLitre(
+          double.tryParse(_costController.text.trim()), liters);
+      if (price != null) _priceController.text = price.toStringAsFixed(2);
+    }
+    _syncingCost = false;
+  }
+
+  String? _validateOptionalMoney(String? v) {
+    if (v == null || v.trim().isEmpty) return null;
+    final val = double.tryParse(v.trim());
+    if (val == null || val < 0) return 'Invalid';
+    return null;
+  }
+
+  Future<void> _pickFuelType() async {
+    final result = await showOptionPicker<String>(
+      context: context,
+      title: 'Fuel Type',
+      options: _fuelTypes
+          .map((t) => PickerOption(value: t, label: t))
+          .toList(),
+      selected: _selectedFuelType,
+      actionLabel: 'Add fuel type',
+    );
+    if (!mounted || result == null) return;
+    if (result is PickerPicked<String>) {
+      setState(() => _selectedFuelType = result.value);
+      return;
+    }
+    // Footer action: add a new type, then select it.
+    final name = await showAddFuelTypeDialog(context);
+    if (name == null || name.trim().isEmpty) return;
+    final added = await addFuelType(name);
+    final types = await loadFuelTypes();
+    final match =
+        types.where((t) => t.toLowerCase() == name.trim().toLowerCase());
+    if (!added && match.isNotEmpty && mounted) {
+      _showSnack('"${match.first}" already exists.');
+    }
+    if (!mounted) return;
+    setState(() {
+      // Keep an orphaned type (deleted/renamed away) displayable.
+      if (!types.contains(_selectedFuelType)) {
+        types.insert(0, _selectedFuelType);
+      }
+      _fuelTypes = types;
+      if (match.isNotEmpty) _selectedFuelType = match.first;
+    });
+  }
+
+  Future<void> _pickBrand() async {
+    final result = await showOptionPicker<String>(
+      context: context,
+      title: 'Pump Brand',
+      options: _pumpBrands
+          .map((b) => PickerOption(
+                value: b,
+                label: b,
+                leading: BrandBadge(brandName: b, showLabel: false, size: 24),
+              ))
+          .toList(),
+      selected: _selectedBrand,
+      actionLabel: 'Add pump brand',
+    );
+    if (!mounted || result == null) return;
+    if (result is PickerPicked<String>) {
+      setState(() => _selectedBrand = result.value);
+      return;
+    }
+    // Footer action: add a new brand, then select it.
+    final name = await showAddFuelTypeDialog(context,
+        title: 'Add Pump Brand', hint: 'e.g. Reliance');
+    if (name == null || name.trim().isEmpty) return;
+    final added = await addPumpBrand(name);
+    final brands = await loadPumpBrands();
+    final match =
+        brands.where((b) => b.toLowerCase() == name.trim().toLowerCase());
+    if (!added && match.isNotEmpty && mounted) {
+      _showSnack('"${match.first}" already exists.');
+    }
+    if (!mounted) return;
+    setState(() {
+      // Keep an orphaned brand (deleted/renamed away) displayable.
+      if (!brands.contains(_selectedBrand)) {
+        brands.insert(0, _selectedBrand);
+      }
+      _pumpBrands = brands;
+      if (match.isNotEmpty) _selectedBrand = match.first;
+    });
   }
 
   Future<void> _save() async {
@@ -105,13 +264,6 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
     );
     if (confirm != true) return;
 
-    final brand =
-        _isOtherBrand ? _customBrandController.text.trim() : _selectedBrand;
-    if (brand.isEmpty) {
-      _showSnack('Please enter a brand name.');
-      return;
-    }
-
     int odometer;
     if (_isKmMode && _prevOdometer != null) {
       final km = int.tryParse(_odoController.text.trim()) ?? 0;
@@ -124,12 +276,20 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
 
     setState(() => _saving = true);
 
+    final newTotal = double.tryParse(_costController.text.trim());
+    final newPrice = double.tryParse(_priceController.text.trim());
+
     final updated = _original!.copyWith(
       odometer: odometer,
       liters: liters,
-      pumpBrand: brand,
+      pumpBrand: _selectedBrand,
       fullTank: _fullTank,
       notes: _notesController.text.trim(),
+      fuelType: _selectedFuelType,
+      totalCost: newTotal,
+      clearTotalCost: newTotal == null,
+      pricePerLitre: newPrice,
+      clearPricePerLitre: newPrice == null,
     );
 
     await _db.updateLog(updated);
@@ -237,67 +397,74 @@ class _EditEntryScreenState extends State<EditEntryScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Brand dropdown
-              DropdownButtonFormField<String>(
-                initialValue: _selectedBrand,
-                decoration: const InputDecoration(
-                  labelText: 'Pump Brand',
-                  prefixIcon: Icon(Icons.ev_station),
-                ),
-                dropdownColor: const Color(0xFF1A1A1A),
-                items: kBrandDropdownItems.map((b) {
-                  final config =
-                      b == 'Other' ? kOtherBrand : getBrandConfig(b);
-                  return DropdownMenuItem(
-                    value: b,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 22,
-                          height: 22,
-                          decoration: BoxDecoration(
-                            color: config.background,
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            config.abbreviation,
-                            style: TextStyle(
-                              color: config.textColor,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(b),
-                      ],
+              // Cost (optional) — the two fields keep each other in sync
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _priceController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Price (₹/L)',
+                        prefixIcon: Icon(Icons.sell_outlined),
+                      ),
+                      validator: _validateOptionalMoney,
                     ),
-                  );
-                }).toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _selectedBrand = v ?? 'Shell';
-                    _isOtherBrand = v == 'Other';
-                  });
-                },
-              ),
-              if (_isOtherBrand) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _customBrandController,
-                  decoration: const InputDecoration(
-                    labelText: 'Custom Brand Name',
-                    prefixIcon: Icon(Icons.edit),
                   ),
-                  validator: (v) {
-                    if (_isOtherBrand && (v == null || v.trim().isEmpty)) {
-                      return 'Enter brand name';
-                    }
-                    return null;
-                  },
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _costController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Total (₹)',
+                        prefixIcon: Icon(Icons.currency_rupee),
+                      ),
+                      validator: _validateOptionalMoney,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Fuel type picker
+              PickerField(
+                label: 'Fuel Type',
+                icon: Icons.local_fire_department_outlined,
+                onTap: _pickFuelType,
+                child: Text(
+                  _selectedFuelType,
+                  style: const TextStyle(color: kTextPrimary, fontSize: 16),
                 ),
-              ],
+              ),
+              const SizedBox(height: 16),
+
+              // Brand picker
+              PickerField(
+                label: 'Pump Brand',
+                icon: Icons.ev_station,
+                onTap: _pickBrand,
+                child: Row(
+                  children: [
+                    BrandBadge(
+                        brandName: _selectedBrand,
+                        showLabel: false,
+                        size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _selectedBrand,
+                        style: const TextStyle(
+                            color: kTextPrimary, fontSize: 16),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
 
               // Notes

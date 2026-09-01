@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
+import '../services/drive_backup_service.dart';
 import '../models/fuel_log.dart';
 import '../utils/constants.dart';
 import '../utils/efficiency_calculator.dart';
@@ -43,6 +47,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+    // Scheduled Drive backup — fire-and-forget so it never blocks startup;
+    // failures surface in Settings via DriveBackupService.lastError().
+    // google_sign_in 6.x only has an Android implementation here.
+    if (!kIsWeb && Platform.isAndroid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(DriveBackupService().checkAndRunScheduled());
+      });
+    }
   }
 
   Future<void> _loadData() async {

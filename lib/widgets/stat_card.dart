@@ -24,8 +24,6 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    final border = borderColor ?? accent.withValues(alpha: 0.3);
-    final bg = backgroundColor ?? Colors.white.withValues(alpha: 0.04);
 
     return GlossyCard(
           padding: const EdgeInsets.all(16),
@@ -35,16 +33,27 @@ class StatCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                emoji,
-                style: const TextStyle(fontSize: 22),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: (borderColor ?? accent).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  emoji,
+                  style: const TextStyle(fontSize: 20),
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
-                label,
+                label.toUpperCase(),
                 style: const TextStyle(
                   color: kTextSecondary,
-                  fontSize: 12,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.8,
                 ),
               ),
               const SizedBox(height: 4),
@@ -52,19 +61,20 @@ class StatCard extends StatelessWidget {
                 value,
                 style: const TextStyle(
                   color: kTextPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               if (subtitle != null) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 Text(
                   subtitle!,
                   style: TextStyle(
-                    color: accent,
-                    fontSize: 14,
+                    color: accent.withValues(alpha: 0.85),
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

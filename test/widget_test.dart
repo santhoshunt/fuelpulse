@@ -30,6 +30,68 @@ void main() {
       expect(restored.fullTank, log.fullTank);
       expect(restored.notes, log.notes);
     });
+
+    test('round-trip with fuel type and cost fields', () {
+      final log = FuelLog(
+        id: 'test-2',
+        timestamp: '2026-08-01T00:00:00.000Z',
+        odometer: 12000,
+        liters: 23.92,
+        pumpBrand: 'Indian Oil',
+        fuelType: 'XP-95',
+        totalCost: 2500.0,
+        pricePerLitre: 104.5,
+      );
+      final restored = FuelLog.fromMap(log.toMap());
+      expect(restored.fuelType, 'XP-95');
+      expect(restored.totalCost, 2500.0);
+      expect(restored.pricePerLitre, 104.5);
+    });
+
+    test('legacy map (no new keys) defaults to Normal and null costs', () {
+      final restored = FuelLog.fromMap({
+        'id': 'legacy-1',
+        'timestamp': '2025-01-01T00:00:00.000Z',
+        'odometer': 5000,
+        'liters': 20.0,
+        'pumpBrand': 'HP',
+        'fullTank': 1,
+        'notes': '',
+      });
+      expect(restored.fuelType, 'Normal');
+      expect(restored.totalCost, isNull);
+      expect(restored.pricePerLitre, isNull);
+    });
+
+    test('fromMap tolerates a JSON double odometer', () {
+      final restored = FuelLog.fromMap({
+        'id': 'json-1',
+        'timestamp': '2025-01-01T00:00:00.000Z',
+        'odometer': 5000.0,
+        'liters': 20.0,
+      });
+      expect(restored.odometer, 5000);
+    });
+
+    test('copyWith clear flags actually clear cost fields', () {
+      final log = FuelLog(
+        id: 'test-3',
+        timestamp: '2026-08-01T00:00:00.000Z',
+        odometer: 100,
+        liters: 10,
+        pumpBrand: 'Shell',
+        totalCost: 999.0,
+        pricePerLitre: 99.9,
+      );
+      final kept = log.copyWith(odometer: 200);
+      expect(kept.totalCost, 999.0);
+      expect(kept.pricePerLitre, 99.9);
+
+      final cleared =
+          log.copyWith(clearTotalCost: true, clearPricePerLitre: true);
+      expect(cleared.totalCost, isNull);
+      expect(cleared.pricePerLitre, isNull);
+    });
   });
 
   group('EfficiencyCalculator', () {
