@@ -8,7 +8,7 @@ class SmoothPageRoute<T> extends PageRouteBuilder<T> {
       : super(
           transitionDuration: const Duration(milliseconds: 350),
           reverseTransitionDuration: const Duration(milliseconds: 280),
-          pageBuilder: (_, __, ___) => page,
+          pageBuilder: (_, _, _) => page,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final curved = CurvedAnimation(
               parent: animation,
