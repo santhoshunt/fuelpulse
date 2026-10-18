@@ -10,20 +10,30 @@ import '../widgets/brand_badge.dart';
 import '../widgets/mode_switch.dart';
 import '../widgets/option_picker.dart';
 
-class AddEntryScreen extends StatefulWidget {
-  const AddEntryScreen({super.key});
+/// Add or edit a fill-up. One form serves both so the fields, cost sync and
+/// pickers stay identical between the two flows.
+class EntryFormScreen extends StatefulWidget {
+  /// Null opens the form to add a new fill-up; an id opens that log for editing.
+  final String? logId;
+
+  const EntryFormScreen({super.key, this.logId});
 
   @override
-  State<AddEntryScreen> createState() => _AddEntryScreenState();
+  State<EntryFormScreen> createState() => _EntryFormScreenState();
 }
 
-class _AddEntryScreenState extends State<AddEntryScreen> {
+class _EntryFormScreenState extends State<EntryFormScreen> {
   final _db = DatabaseHelper();
   final _formKey = GlobalKey<FormState>();
 
+  bool get _isEdit => widget.logId != null;
+
   bool _isKmMode = false;
-  bool _kmModeEnabled = false;
-  FuelLog? _lastLog;
+  FuelLog? _original;
+
+  /// Odometer that KM mode counts from: the latest log when adding, the log
+  /// just before this one when editing. Null disables KM mode.
+  int? _baseOdometer;
 
   final _odoController = TextEditingController();
   final _litersController = TextEditingController();
@@ -35,33 +45,38 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   String _selectedBrand = 'Shell';
   bool _fullTank = true;
   bool _saving = false;
+  late bool _loading = _isEdit;
 
   List<String> _fuelTypes = [kDefaultFuelType];
   String _selectedFuelType = kDefaultFuelType;
 
   // Guards against listener ping-pong while one cost field updates the other.
   bool _syncingCost = false;
-  // Which cost field the user typed last — litres edits recompute the OTHER one.
-  String _lastCostEdited = 'price';
+  // Which cost field the user typed last — litres edits recompute the OTHER
+  // one. Defaults to 'total' when editing: the receipt total is what people
+  // verify.
+  late String _lastCostEdited = _isEdit ? 'total' : 'price';
 
   @override
   void initState() {
     super.initState();
-    _loadLastEntry();
+    if (_isEdit) {
+      _loadForEdit();
+    } else {
+      _loadForAdd();
+    }
     _priceController.addListener(_onPriceChanged);
     _costController.addListener(_onCostChanged);
     _litersController.addListener(_onLitersChangedForCost);
   }
 
-  Future<void> _loadLastEntry() async {
+  Future<void> _loadForAdd() async {
     try {
-      final count = await _db.getLogCount();
       final last = await _db.getLastLog();
       final types = await loadFuelTypes();
       final brands = await loadPumpBrands();
       setState(() {
-        _kmModeEnabled = count > 0;
-        _lastLog = last;
+        _baseOdometer = last?.odometer;
         _fuelTypes = types;
         if (!types.contains(_selectedFuelType)) {
           _selectedFuelType = types.first;
@@ -74,6 +89,47 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     } catch (e) {
       debugPrint('Error loading last entry: $e');
     }
+  }
+
+  Future<void> _loadForEdit() async {
+    final log = await _db.getLogById(widget.logId!);
+    if (log == null) {
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+
+    // Find previous log for KM mode calculation
+    final chrono = await _db.getAllLogsChrono();
+    final idx = chrono.indexWhere((l) => l.id == log.id);
+    int? prevOdo;
+    if (idx > 0) prevOdo = chrono[idx - 1].odometer;
+
+    final types = await loadFuelTypes();
+    // Tolerate a type that was deleted/renamed away — the log keeps its
+    // string, so inject it locally for display.
+    if (!types.contains(log.fuelType)) types.insert(0, log.fuelType);
+
+    final brands = await loadPumpBrands();
+    if (!brands.contains(log.pumpBrand)) brands.insert(0, log.pumpBrand);
+
+    setState(() {
+      _original = log;
+      _baseOdometer = prevOdo;
+      // Prefill without triggering the cost-linking listeners.
+      _syncingCost = true;
+      _odoController.text = log.odometer.toString();
+      _litersController.text = log.liters.toString();
+      _priceController.text = log.pricePerLitre?.toString() ?? '';
+      _costController.text = log.totalCost?.toString() ?? '';
+      _syncingCost = false;
+      _notesController.text = log.notes;
+      _fullTank = log.fullTank;
+      _fuelTypes = types;
+      _selectedFuelType = log.fuelType;
+      _pumpBrands = brands;
+      _selectedBrand = log.pumpBrand;
+      _loading = false;
+    });
   }
 
   @override
@@ -170,6 +226,10 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     }
     if (!mounted) return;
     setState(() {
+      // Keep an orphaned type (deleted/renamed away) displayable.
+      if (!types.contains(_selectedFuelType)) {
+        types.insert(0, _selectedFuelType);
+      }
       _fuelTypes = types;
       if (match.isNotEmpty) _selectedFuelType = match.first;
     });
@@ -207,6 +267,10 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     }
     if (!mounted) return;
     setState(() {
+      // Keep an orphaned brand (deleted/renamed away) displayable.
+      if (!brands.contains(_selectedBrand)) {
+        brands.insert(0, _selectedBrand);
+      }
       _pumpBrands = brands;
       if (match.isNotEmpty) _selectedBrand = match.first;
     });
@@ -215,11 +279,17 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_saving) return;
+    if (_isEdit && _original == null) return;
+
+    if (_isEdit) {
+      final confirm = await _showSaveConfirmation();
+      if (!confirm) return;
+    }
 
     int odometer;
-    if (_isKmMode) {
+    if (_isKmMode && _baseOdometer != null) {
       final km = int.tryParse(_odoController.text.trim()) ?? 0;
-      odometer = (_lastLog?.odometer ?? 0) + km;
+      odometer = _baseOdometer! + km;
     } else {
       odometer = int.tryParse(_odoController.text.trim()) ?? 0;
     }
@@ -227,28 +297,49 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     final liters = double.tryParse(_litersController.text.trim()) ?? 0;
 
     // Backward odometer warning
-    if (!_isKmMode && _lastLog != null && odometer < _lastLog!.odometer) {
+    if (!_isEdit &&
+        !_isKmMode &&
+        _baseOdometer != null &&
+        odometer < _baseOdometer!) {
       final proceed = await _showBackwardOdoWarning();
       if (!proceed) return;
     }
 
     setState(() => _saving = true);
 
-    try {
-      final log = FuelLog(
-        id: FuelLog.generateId(),
-        timestamp: DateTime.now().toIso8601String(),
-        odometer: odometer,
-        liters: liters,
-        pumpBrand: _selectedBrand,
-        fullTank: _fullTank,
-        notes: _notesController.text.trim(),
-        fuelType: _selectedFuelType,
-        totalCost: double.tryParse(_costController.text.trim()),
-        pricePerLitre: double.tryParse(_priceController.text.trim()),
-      );
+    final newTotal = double.tryParse(_costController.text.trim());
+    final newPrice = double.tryParse(_priceController.text.trim());
 
-      await _db.insertLog(log);
+    try {
+      if (_isEdit) {
+        final updated = _original!.copyWith(
+          odometer: odometer,
+          liters: liters,
+          pumpBrand: _selectedBrand,
+          fullTank: _fullTank,
+          notes: _notesController.text.trim(),
+          fuelType: _selectedFuelType,
+          totalCost: newTotal,
+          clearTotalCost: newTotal == null,
+          pricePerLitre: newPrice,
+          clearPricePerLitre: newPrice == null,
+        );
+        await _db.updateLog(updated);
+      } else {
+        final log = FuelLog(
+          id: FuelLog.generateId(),
+          timestamp: DateTime.now().toIso8601String(),
+          odometer: odometer,
+          liters: liters,
+          pumpBrand: _selectedBrand,
+          fullTank: _fullTank,
+          notes: _notesController.text.trim(),
+          fuelType: _selectedFuelType,
+          totalCost: newTotal,
+          pricePerLitre: newPrice,
+        );
+        await _db.insertLog(log);
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       debugPrint('Error saving entry: $e');
@@ -257,6 +348,25 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
         _showSnack('Failed to save: $e');
       }
     }
+  }
+
+  Future<bool> _showSaveConfirmation() async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Save Changes'),
+            content: const Text('Save changes to this entry?'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Save')),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<bool> _showBackwardOdoWarning() async {
@@ -283,13 +393,41 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  void _switchMode(bool km) {
+    // ModeSwitch reports taps on the tab that is already selected; converting
+    // then would add or subtract the base odometer a second time.
+    if (km == _isKmMode) return;
+    setState(() {
+      _isKmMode = km;
+      // Convert only a value the user actually entered; an empty field
+      // stays empty.
+      final current = int.tryParse(_odoController.text.trim());
+      if (_baseOdometer == null || current == null) return;
+      if (km) {
+        // Convert current odometer to km driven
+        _odoController.text = (current - _baseOdometer!).toString();
+      } else {
+        // Convert km driven back to odometer
+        _odoController.text = (_baseOdometer! + current).toString();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
+    final title = _isEdit ? 'Edit Fill-up' : 'Add Fill-up';
+
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Add Fill-up'),
+        title: Text(title),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -305,8 +443,8 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
               // Mode switch
               ModeSwitch(
                 isKmMode: _isKmMode,
-                kmModeEnabled: _kmModeEnabled,
-                onChanged: (km) => setState(() => _isKmMode = km),
+                kmModeEnabled: _baseOdometer != null,
+                onChanged: _switchMode,
               ),
               const SizedBox(height: 20),
 
@@ -329,11 +467,13 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                   return null;
                 },
               ),
-              if (_isKmMode && _lastLog != null) ...[
+              if (_isKmMode && _baseOdometer != null) ...[
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),
                   child: Text(
-                    'Last odometer: ${_lastLog!.odometer} km',
+                    _isEdit
+                        ? 'Previous odometer: $_baseOdometer km'
+                        : 'Last odometer: $_baseOdometer km',
                     style:
                         const TextStyle(color: kTextMuted, fontSize: 12),
                   ),
@@ -493,8 +633,8 @@ class _AddEntryScreenState extends State<AddEntryScreen> {
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Save Entry',
-                          style: TextStyle(
+                      : Text(_isEdit ? 'Save Changes' : 'Save Entry',
+                          style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),

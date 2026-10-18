@@ -13,8 +13,7 @@ import '../utils/page_routes.dart';
 import '../utils/tank_level_calculator.dart';
 import '../widgets/fuel_log_tile.dart';
 import '../widgets/glossy_card.dart';
-import 'add_entry_screen.dart';
-import 'edit_entry_screen.dart';
+import 'entry_form_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
 import '../models/theme_preference.dart';
@@ -219,30 +218,35 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: 18,
         child: Row(
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _overallAvg > 0
-                      ? '${_overallAvg.toStringAsFixed(1)} km/L'
-                      : '— km/L',
-                  style: TextStyle(
-                    color: accent,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+            // Expanded so large system font sizes ellipsize instead of
+            // overflowing the card.
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _overallAvg > 0
+                        ? '${_overallAvg.toStringAsFixed(1)} km/L'
+                        : '— km/L',
+                    style: TextStyle(
+                      color: accent,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Overall average  •  ${_logs.length} entries',
-                  style: const TextStyle(
-                    color: kTextSecondary,
-                    fontSize: 12,
+                  const SizedBox(height: 2),
+                  Text(
+                    'Overall average  •  ${_logs.length} entries',
+                    style: const TextStyle(
+                      color: kTextSecondary,
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-            const Spacer(),
             Icon(Icons.arrow_forward_ios_rounded,
                 color: accent.withValues(alpha: 0.5), size: 18),
           ],
@@ -292,14 +296,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void _goToAdd() {
     Navigator.push(
       context,
-      SmoothPageRoute(page: const AddEntryScreen()),
+      SmoothPageRoute(page: const EntryFormScreen()),
     ).then((_) => _loadData());
   }
 
   void _goToEdit(FuelLog log) {
     Navigator.push(
       context,
-      SmoothPageRoute(page: EditEntryScreen(logId: log.id)),
+      SmoothPageRoute(page: EntryFormScreen(logId: log.id)),
     ).then((_) => _loadData());
   }
 

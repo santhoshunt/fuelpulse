@@ -12,7 +12,7 @@
 
 ## Overview
 
-FuelPulse helps you track every fuel fill-up, calculate **real-world mileage** per segment, compare efficiency across fuel brands, and estimate how much fuel is left in your tank — all **100 % offline** with no accounts or cloud sync.
+FuelPulse records every fuel fill-up and works out **real-world mileage** for each full-tank segment. It compares pump brands and fuel types, tracks what you spend, and estimates how much fuel is left in the tank. Your data lives in a SQLite database on the phone and needs no account or internet connection. Google Drive backup is optional and off until you sign in.
 
 ## Features
 
@@ -20,9 +20,15 @@ FuelPulse helps you track every fuel fill-up, calculate **real-world mileage** p
 |---|---|
 | **Segment-based efficiency** | Calculates km/L between consecutive full-tank entries — shows the exact *"X km ÷ Y L"* breakdown |
 | **Brand comparison** | Ranks fuel brands by average efficiency with visual bars and delta indicators |
+| **Fuel types** | Tag each fill-up with a fuel type. Normal is built in, and you can add others such as XP-95. Statistics compares km/L and ₹/km per type |
+| **Cost tracking** | Enter the price per litre or the total paid and the app fills in the other. Statistics shows total spend, average price, cost per km and monthly spend |
+| **Trend charts** | km/L and cost per km for each full-tank segment, plotted over time |
+| **Pump brand management** | Add, rename and remove pump brands. A rename updates every past fill-up |
 | **Tank level estimation** | Forward-walk model estimates remaining litres at each fill-up |
 | **Full / Partial fill tracking** | Handles both full-tank and partial-fill entries correctly |
 | **CSV import / export** | Backup and restore your data via CSV files |
+| **Backup file** | Export one compressed file with fill-ups, fuel types, pump brands and settings, and restore it on any phone |
+| **Google Drive backup** | Optional daily, weekly or monthly upload of the same backup file. The app can only see files it created in your Drive |
 | **Custom brand colours** | Assign a colour to each fuel brand for quick visual identification |
 | **Dark glossy UI** | Performant CustomPaint-based glossy card design — no BackdropFilter overhead |
 | **Smooth transitions** | Fade + slide page routes, scroll-aware staggered list animations |
@@ -30,9 +36,17 @@ FuelPulse helps you track every fuel fill-up, calculate **real-world mileage** p
 
 ## Screenshots
 
-<!-- Add your screenshots here -->
-<!-- ![Home Screen](screenshots/home.png) -->
-<!-- ![Stats Screen](screenshots/stats.png) -->
+| Home | Add fill-up |
+|---|---|
+| ![Home screen with fill-up history](screenshots/home.png) | ![Add fill-up form](screenshots/add_fill_up.png) |
+| **Statistics** | **Trends** |
+| ![Statistics screen with brand ranking](screenshots/stats.png) | ![Efficiency and cost per km trend charts](screenshots/stats_trends.png) |
+
+The screenshots come from sample data rendered offscreen. To regenerate them, run:
+
+```bash
+flutter test tool/readme_screenshots_test.dart --update-goldens
+```
 
 ## Tech Stack
 
@@ -41,6 +55,8 @@ FuelPulse helps you track every fuel fill-up, calculate **real-world mileage** p
 - **State management:** StatefulWidget + setState (lightweight, no external state library)
 - **Preferences:** [shared_preferences](https://pub.dev/packages/shared_preferences)
 - **CSV:** [csv](https://pub.dev/packages/csv) + [share_plus](https://pub.dev/packages/share_plus)
+- **Backup:** [file_picker](https://pub.dev/packages/file_picker) for restore, [google_sign_in](https://pub.dev/packages/google_sign_in) + [googleapis](https://pub.dev/packages/googleapis) for Drive
+- **Charts:** drawn with `CustomPaint`, no chart package
 - **Theming:** Custom `ThemeManager` with dynamic brand colours via [flutter_colorpicker](https://pub.dev/packages/flutter_colorpicker)
 
 ## Project Structure
@@ -55,13 +71,21 @@ lib/
 │   └── theme_preference.dart  # Theme/colour preferences model
 ├── screens/
 │   ├── home_screen.dart       # Main log list + summary banner
-│   ├── add_entry_screen.dart  # Add new fuel entry
-│   ├── edit_entry_screen.dart # Edit existing entry
-│   ├── stats_screen.dart      # Brand ranking + stat cards
-│   └── settings_screen.dart   # Tank capacity, CSV, theme
+│   ├── entry_form_screen.dart # Add or edit a fill-up
+│   ├── stats_screen.dart      # Stat cards, trends, cost, rankings
+│   └── settings_screen.dart   # Tank capacity, brands, fuel types, backup, theme
+├── services/
+│   ├── backup_payload.dart    # Build and restore the backup contents
+│   ├── backup_codec.dart      # Gzip encode/decode of the backup
+│   ├── backup_file.dart       # Export/import the backup as a file
+│   └── drive_backup_service.dart # Scheduled Google Drive backup
 ├── utils/
-│   ├── efficiency_calculator.dart  # Segment-based km/L calculator
+│   ├── efficiency_calculator.dart  # Segment-based km/L, brand and fuel type ranking
+│   ├── trend_calculator.dart       # One km/L and ₹/km point per segment
+│   ├── cost_calculator.dart        # Price/total sync and spend stats
 │   ├── tank_level_calculator.dart  # Estimated fuel-in-tank model
+│   ├── fuel_type_manager.dart      # Fuel type list (add, rename, delete)
+│   ├── pump_brand_manager.dart     # Pump brand list (add, rename, delete)
 │   ├── csv_helper.dart             # CSV import/export
 │   ├── page_routes.dart            # Smooth fade+slide transitions
 │   ├── theme_manager.dart          # Dynamic theme/colour manager
@@ -70,11 +94,14 @@ lib/
     ├── glossy_card.dart        # CustomPaint glossy card container
     ├── fuel_log_tile.dart      # Individual log entry tile
     ├── stat_card.dart          # Summary statistic card
-    ├── brand_rank_tile.dart    # Brand ranking row
+    ├── rank_tile.dart          # Brand / fuel type ranking row
+    ├── trend_chart.dart        # CustomPaint line chart
     ├── brand_badge.dart        # Colour-coded brand chip
     ├── fuel_gauge.dart         # Fuel gauge visual
     ├── color_swatch_picker.dart # Brand colour picker
-    └── mode_switch.dart        # Theme mode toggle
+    ├── option_picker.dart      # Bottom-sheet picker for type and brand
+    ├── add_fuel_type_dialog.dart # Name dialog for a new type or brand
+    └── mode_switch.dart        # Odometer / KM travelled toggle
 ```
 
 ## Download
@@ -83,9 +110,9 @@ Pre-built Android APKs are available on the [Releases](https://github.com/santho
 
 | APK | Architecture | Notes |
 |---|---|---|
-| [app-arm64-v8a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.1.0/app-arm64-v8a-release.apk) | ARM64 | Most modern Android phones (recommended) |
-| [app-armeabi-v7a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.1.0/app-armeabi-v7a-release.apk) | ARMv7 | Older 32-bit Android phones |
-| [app-x86_64-release.apk](https://github.com/santhoshunt/fuelpulse/releases/download/v1.1.0/app-x86_64-release.apk) | x86_64 | Emulators / Intel-based devices |
+| [app-arm64-v8a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/latest/download/app-arm64-v8a-release.apk) | ARM64 | Most modern Android phones (recommended) |
+| [app-armeabi-v7a-release.apk](https://github.com/santhoshunt/fuelpulse/releases/latest/download/app-armeabi-v7a-release.apk) | ARMv7 | Older 32-bit Android phones |
+| [app-x86_64-release.apk](https://github.com/santhoshunt/fuelpulse/releases/latest/download/app-x86_64-release.apk) | x86_64 | Emulators / Intel-based devices |
 
 ## Getting Started
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/fuel_log.dart';
@@ -6,6 +7,8 @@ class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
+
+  static const int schemaVersion = 2;
 
   static Database? _database;
 
@@ -20,13 +23,14 @@ class DatabaseHelper {
     final path = join(dbPath, 'fuelpulse.db');
     return await openDatabase(
       path,
-      version: 2,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
+      version: schemaVersion,
+      onCreate: onCreate,
+      onUpgrade: onUpgrade,
     );
   }
 
-  Future<void> _onCreate(Database db, int version) async {
+  @visibleForTesting
+  static Future<void> onCreate(Database db, int version) async {
     await db.execute('''
       CREATE TABLE fuel_logs (
         id TEXT PRIMARY KEY,
@@ -43,7 +47,9 @@ class DatabaseHelper {
     ''');
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  @visibleForTesting
+  static Future<void> onUpgrade(
+      Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute(
           "ALTER TABLE fuel_logs ADD COLUMN fuelType TEXT NOT NULL DEFAULT 'Normal'");

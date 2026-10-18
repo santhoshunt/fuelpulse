@@ -148,41 +148,4 @@ void main() {
     expect(await db.getLogById('keep-me'), isNotNull);
     expect(await db.getLogById('good'), isNull);
   });
-
-  test('v1 → v2 migration SQL gives legacy rows the defaults', () async {
-    final db = await databaseFactory.openDatabase(inMemoryDatabasePath);
-    await db.execute('''
-      CREATE TABLE fuel_logs (
-        id TEXT PRIMARY KEY,
-        timestamp TEXT NOT NULL,
-        odometer INTEGER NOT NULL,
-        liters REAL NOT NULL,
-        pumpBrand TEXT NOT NULL DEFAULT '',
-        fullTank INTEGER NOT NULL DEFAULT 1,
-        notes TEXT NOT NULL DEFAULT ''
-      )
-    ''');
-    await db.insert('fuel_logs', {
-      'id': 'legacy',
-      'timestamp': '2025-01-01T00:00:00.000',
-      'odometer': 5000,
-      'liters': 20.0,
-      'pumpBrand': 'HP',
-      'fullTank': 1,
-      'notes': '',
-    });
-
-    // The exact statements from DatabaseHelper._onUpgrade (oldVersion < 2).
-    await db.execute(
-        "ALTER TABLE fuel_logs ADD COLUMN fuelType TEXT NOT NULL DEFAULT 'Normal'");
-    await db.execute('ALTER TABLE fuel_logs ADD COLUMN totalCost REAL');
-    await db.execute('ALTER TABLE fuel_logs ADD COLUMN pricePerLitre REAL');
-
-    final rows = await db.query('fuel_logs');
-    final restored = FuelLog.fromMap(rows.single);
-    expect(restored.fuelType, 'Normal');
-    expect(restored.totalCost, isNull);
-    expect(restored.pricePerLitre, isNull);
-    await db.close();
-  });
 }

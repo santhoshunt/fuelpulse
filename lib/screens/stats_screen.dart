@@ -3,9 +3,11 @@ import '../db/database_helper.dart';
 import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
+import '../utils/trend_calculator.dart';
 import '../widgets/brand_badge.dart';
 import '../widgets/rank_tile.dart';
 import '../widgets/stat_card.dart';
+import '../widgets/trend_chart.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -19,6 +21,7 @@ class _StatsScreenState extends State<StatsScreen> {
   BrandComparisonResult? _result;
   FuelTypeComparisonResult? _fuelTypeResult;
   CostStats? _costStats;
+  List<SegmentTrendPoint> _trend = const [];
   int _logCount = 0;
   bool _loading = true;
   bool _hasSegments = false;
@@ -34,6 +37,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final result = calculateBrandEfficiency(chrono);
     final fuelTypeResult = calculateFuelTypeEfficiency(chrono);
     final costStats = calculateCostStats(chrono);
+    final trend = calculateSegmentTrend(chrono);
 
     // Check if there's at least 1 completed segment
     final hasSegments = result.totalKm > 0 && result.totalLiters > 0;
@@ -42,6 +46,7 @@ class _StatsScreenState extends State<StatsScreen> {
       _result = result;
       _fuelTypeResult = fuelTypeResult;
       _costStats = costStats;
+      _trend = trend;
       _logCount = chrono.length;
       _hasSegments = hasSegments;
       _loading = false;
@@ -191,6 +196,37 @@ class _StatsScreenState extends State<StatsScreen> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 28),
+
+          // ── Trends ────────────────────────────────────
+          _sectionHeader('Trends', accent),
+          const SizedBox(height: 6),
+          const Text(
+            'Each point is one full-tank to full-tank segment.',
+            style: TextStyle(color: kTextMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          TrendChart(
+            title: 'Efficiency (km/L)',
+            points: _trend
+                .map((p) => TrendPoint(p.closedAt, p.kmPerLitre))
+                .toList(),
+            formatValue: (v) => v.toStringAsFixed(1),
+            emptyMessage: 'Trend appears after 2 completed full-tank segments.',
+          ),
+          const SizedBox(height: 12),
+          TrendChart(
+            title: 'Cost per km (₹)',
+            points: _trend
+                .where((p) => p.costPerKm != null)
+                .map((p) => TrendPoint(p.closedAt, p.costPerKm!))
+                .toList(),
+            formatValue: (v) => '₹${v.toStringAsFixed(2)}',
+            // With fewer than 2 segments, missing prices are not the reason.
+            emptyMessage: _trend.length < 2
+                ? 'Trend appears after 2 completed full-tank segments.'
+                : 'Add price or total to fill-ups to see cost per km over time.',
           ),
           const SizedBox(height: 28),
           ],
