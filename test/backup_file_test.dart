@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
+import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/services/backup_codec.dart';
 import 'package:fuelpulse/services/backup_file.dart';
 import 'package:fuelpulse/services/backup_payload.dart';
@@ -15,6 +16,7 @@ import 'package:fuelpulse/utils/fuel_type_manager.dart';
 import 'package:fuelpulse/utils/pump_brand_manager.dart';
 
 FuelLog _log(String id, {int odometer = 1000}) => FuelLog(
+      vehicleId: kDefaultVehicleId,
       id: id,
       timestamp: '2026-08-01T09:00:00.000',
       odometer: odometer,
@@ -29,17 +31,23 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+  // Own database file: test files run in parallel processes, and the
+  // default path is shared by every file that does not set one.
+  setUpAll(() async {
+    await databaseFactory.setDatabasesPath(
+        Directory.systemTemp.createTempSync('fuelpulse_backup_file_').path);
+  });
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    await DatabaseHelper().deleteAllLogs();
+    await DatabaseHelper().resetToDefaultVehicle();
   });
 
   test('file round-trip restores logs, settings, fuel types and brands',
       () async {
     final db = DatabaseHelper();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(kTankCapacityKey, 11.5);
+    final car = await db.getVehicle(kDefaultVehicleId);
+    await db.updateVehicle(car!.copyWith(tankCapacity: 11.5));
     await addFuelType('XP-95');
     await addPumpBrand('Reliance');
     await db.insertLogs([_log('a'), _log('b', odometer: 1200)]);
@@ -52,7 +60,7 @@ void main() {
     addTearDown(() => file.delete());
 
     // Wipe everything, then restore from the file.
-    await db.deleteAllLogs();
+    await db.resetToDefaultVehicle();
     SharedPreferences.setMockInitialValues({});
 
     final data = await readBackupFile(file);
@@ -63,8 +71,7 @@ void main() {
     final a = await db.getLogById('a');
     expect(a!.totalCost, 1050);
     expect(a.fuelType, 'XP-95');
-    final freshPrefs = await SharedPreferences.getInstance();
-    expect(freshPrefs.getDouble(kTankCapacityKey), 11.5);
+    expect((await db.getVehicle(kDefaultVehicleId))!.tankCapacity, 11.5);
     expect(await loadFuelTypes(), ['Normal', 'XP-95']);
     expect(await loadPumpBrands(), [...kDefaultPumpBrands, 'Reliance']);
   });

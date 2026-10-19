@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
+import '../models/vehicle.dart';
 import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
@@ -10,7 +11,11 @@ import '../widgets/stat_card.dart';
 import '../widgets/trend_chart.dart';
 
 class StatsScreen extends StatefulWidget {
-  const StatsScreen({super.key});
+  /// Statistics never mix vehicles: one vehicle's km/L next to another's
+  /// would average into a meaningless number.
+  final Vehicle vehicle;
+
+  const StatsScreen({super.key, required this.vehicle});
 
   @override
   State<StatsScreen> createState() => _StatsScreenState();
@@ -33,7 +38,7 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Future<void> _loadStats() async {
-    final chrono = await _db.getAllLogsChrono();
+    final chrono = await _db.getAllLogsChrono(widget.vehicle.id);
     final result = calculateBrandEfficiency(chrono);
     final fuelTypeResult = calculateFuelTypeEfficiency(chrono);
     final costStats = calculateCostStats(chrono);
@@ -42,6 +47,7 @@ class _StatsScreenState extends State<StatsScreen> {
     // Check if there's at least 1 completed segment
     final hasSegments = result.totalKm > 0 && result.totalLiters > 0;
 
+    if (!mounted) return;
     setState(() {
       _result = result;
       _fuelTypeResult = fuelTypeResult;
@@ -59,7 +65,8 @@ class _StatsScreenState extends State<StatsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Statistics'),
+        title: Text('Statistics · ${widget.vehicle.name}',
+            overflow: TextOverflow.ellipsis),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),

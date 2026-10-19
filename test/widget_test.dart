@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
+import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/utils/efficiency_calculator.dart';
 
 void main() {
@@ -12,6 +13,7 @@ void main() {
 
     test('toMap and fromMap round-trip', () {
       final log = FuelLog(
+        vehicleId: kDefaultVehicleId,
         id: 'test-1',
         timestamp: '2025-01-01T00:00:00.000Z',
         odometer: 10000,
@@ -33,6 +35,7 @@ void main() {
 
     test('round-trip with fuel type and cost fields', () {
       final log = FuelLog(
+        vehicleId: kDefaultVehicleId,
         id: 'test-2',
         timestamp: '2026-08-01T00:00:00.000Z',
         odometer: 12000,
@@ -75,6 +78,7 @@ void main() {
 
     test('copyWith clear flags actually clear cost fields', () {
       final log = FuelLog(
+        vehicleId: kDefaultVehicleId,
         id: 'test-3',
         timestamp: '2026-08-01T00:00:00.000Z',
         odometer: 100,
@@ -102,6 +106,7 @@ void main() {
     test('single entry is pending', () {
       final logs = [
         FuelLog(
+          vehicleId: kDefaultVehicleId,
           id: '1', timestamp: '2025-01-01T00:00:00Z',
           odometer: 1000, liters: 30, pumpBrand: 'Shell', fullTank: true,
         ),
@@ -113,10 +118,12 @@ void main() {
     test('two full-tank entries produce correct efficiency', () {
       final logs = [
         FuelLog(
+          vehicleId: kDefaultVehicleId,
           id: '1', timestamp: '2025-01-01T00:00:00Z',
           odometer: 1000, liters: 30, pumpBrand: 'Shell', fullTank: true,
         ),
         FuelLog(
+          vehicleId: kDefaultVehicleId,
           id: '2', timestamp: '2025-01-02T00:00:00Z',
           odometer: 1500, liters: 25, pumpBrand: 'HP', fullTank: true,
         ),
@@ -131,14 +138,17 @@ void main() {
     test('partial fill included in segment', () {
       final logs = [
         FuelLog(
+          vehicleId: kDefaultVehicleId,
           id: '1', timestamp: '2025-01-01T00:00:00Z',
           odometer: 1000, liters: 30, pumpBrand: 'Shell', fullTank: true,
         ),
         FuelLog(
+          vehicleId: kDefaultVehicleId,
           id: '2', timestamp: '2025-01-02T00:00:00Z',
           odometer: 1200, liters: 10, pumpBrand: 'HP', fullTank: false,
         ),
         FuelLog(
+          vehicleId: kDefaultVehicleId,
           id: '3', timestamp: '2025-01-03T00:00:00Z',
           odometer: 1500, liters: 15, pumpBrand: 'Shell', fullTank: true,
         ),

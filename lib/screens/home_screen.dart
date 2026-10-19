@@ -3,20 +3,28 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../services/drive_backup_service.dart';
+import '../services/update_downloader.dart';
+import '../services/update_installer.dart';
+import '../services/update_prefs.dart';
+import '../services/update_service.dart';
 import '../models/fuel_log.dart';
 import '../utils/constants.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/page_routes.dart';
 import '../utils/tank_level_calculator.dart';
+import '../utils/vehicle_manager.dart';
 import '../widgets/fuel_log_tile.dart';
 import '../widgets/glossy_card.dart';
+import '../widgets/update_banner.dart';
+import '../widgets/vehicle_chip.dart';
+import '../widgets/vehicle_picker.dart';
 import 'entry_form_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
 import '../models/theme_preference.dart';
+import '../models/vehicle.dart';
 
 class HomeScreen extends StatefulWidget {
   final ThemePreference theme;
@@ -32,8 +40,11 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _db = DatabaseHelper();
+
+  /// The vehicle everything on Home shows. Null only before the first load.
+  Vehicle? _vehicle;
   List<FuelLog> _logs = [];
   List<FuelLog> _chronoLogs = [];
   Map<String, EfficiencyResult> _efficiencyMap = {};
@@ -54,14 +65,106 @@ class _HomeScreenState extends State<HomeScreen> {
         unawaited(DriveBackupService().checkAndRunScheduled());
       });
     }
+    if (_updatesSupported) {
+      WidgetsBinding.instance.addObserver(this);
+      // A downloaded update never outlives the launch after it.
+      unawaited(UpdateDownloader().cleanup());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _reportUpdateResult();
+        _checkForUpdate();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Android keeps the process in recents, so a launch is usually a resume:
+  /// the daily check has to run there too.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkForUpdate();
+  }
+
+  static bool get _updatesSupported => !kIsWeb && Platform.isAndroid;
+
+  bool _checkingForUpdate = false;
+
+  /// When a launch check last failed (offline, rate limited). In memory
+  /// only: a failure is retried after an hour, not on every resume.
+  static DateTime? _updateCheckFailedAt;
+
+  /// The daily launch check for a newer release (Settings can switch it
+  /// off). Only reads GitHub; what it finds waits in [availableUpdate] for
+  /// the banner, and no further check runs while it is there. Failures stay
+  /// silent, since nobody asked. Ported from the expense tracker.
+  Future<void> _checkForUpdate() async {
+    if (!mounted || !_updatesSupported || _checkingForUpdate) return;
+    if (availableUpdate.value != null) return;
+    final now = DateTime.now();
+    final failed = _updateCheckFailedAt;
+    if (failed != null && now.difference(failed) < const Duration(hours: 1)) {
+      return;
+    }
+    _checkingForUpdate = true;
+    try {
+      if (!shouldCheckForUpdate(
+        enabled: await updateOnLaunch(),
+        lastCheck: await updateLastCheck(),
+        now: now,
+      )) {
+        return;
+      }
+      final result = await UpdateService().check();
+      switch (result) {
+        case UpdateAvailable(:final updates):
+          availableUpdate.value = updates;
+          await markUpdateChecked(now);
+        case UpToDate():
+          await markUpdateChecked(now);
+        case CheckFailed():
+          _updateCheckFailedAt = now;
+      }
+    } finally {
+      _checkingForUpdate = false;
+    }
+  }
+
+  /// First launch after an in-app update: say it worked, and point to the
+  /// switch that allowed it, which the app cannot turn off itself.
+  Future<void> _reportUpdateResult() async {
+    if (!mounted || !_updatesSupported) return;
+    final tag = await installingUpdateTag();
+    if (tag == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final String version;
+    try {
+      version = await ChannelUpdateInstaller.instance.currentVersion();
+    } catch (_) {
+      return;
+    }
+    await setInstallingUpdateTag(null);
+    if (UpdateService.compareVersions(version, tag) != 0) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text('Updated to $tag. You can turn off Install unknown apps '
+          'for FuelPulse again.'),
+      duration: const Duration(seconds: 8),
+      action: SnackBarAction(
+        label: 'Settings',
+        onPressed: ChannelUpdateInstaller.instance.openInstallSettings,
+      ),
+    ));
   }
 
   Future<void> _loadData() async {
     try {
-      final logs = await _db.getAllLogs();
-      final chrono = await _db.getAllLogsChrono();
-      final prefs = await SharedPreferences.getInstance();
-      final cap = prefs.getDouble(kTankCapacityKey) ?? 0;
+      final vehicle = await loadActiveVehicle();
+      final logs = await _db.getAllLogs(vehicle.id);
+      final chrono = await _db.getAllLogsChrono(vehicle.id);
+      final cap = vehicle.tankCapacity ?? 0;
 
       final effMap = calculateEfficiency(chrono);
       final levels = calculateTankLevels(chrono, cap, effMap);
@@ -81,7 +184,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
+      if (!mounted) return;
       setState(() {
+        _vehicle = vehicle;
         _logs = logs;
         _chronoLogs = chrono;
         _efficiencyMap = effMap;
@@ -148,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   key: const ValueKey('content'),
                   children: [
                     _buildAppBar(accent),
+                    const UpdateBanner(),
                     if (_logs.isNotEmpty) _buildSummaryBanner(accent),
                     Expanded(
                       child:
@@ -179,33 +285,53 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildAppBar(Color accent) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Builder(
-            builder: (context) {
-              return Text(
-                'FuelPulse',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  foreground: Paint()
-                    ..shader = ui.Gradient.linear(
-                      const Offset(0, 0),
-                      const Offset(150, 0),
-                      [accent, accent.withValues(alpha: 0.6)],
+          Row(
+            children: [
+              Builder(
+                builder: (context) {
+                  return Text(
+                    'FuelPulse',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      foreground: Paint()
+                        ..shader = ui.Gradient.linear(
+                          const Offset(0, 0),
+                          const Offset(150, 0),
+                          [accent, accent.withValues(alpha: 0.6)],
+                        ),
                     ),
-                ),
-              );
-            },
+                  );
+                },
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.settings_outlined,
+                    color: kTextSecondary),
+                onPressed: _goToSettings,
+              ),
+            ],
           ),
-          const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: kTextSecondary),
-            onPressed: _goToSettings,
-          ),
+          if (_vehicle != null) ...[
+            const SizedBox(height: 6),
+            VehicleChip(vehicle: _vehicle!, onTap: _pickVehicle),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _pickVehicle() async {
+    final vehicles = await _db.getVehicles();
+    if (!mounted) return;
+    final picked = await showVehiclePicker(context,
+        vehicles: vehicles, selectedId: _vehicle!.id);
+    if (picked == null) return;
+    await setActiveVehicle(picked.id);
+    await _loadData();
   }
 
   Widget _buildSummaryBanner(Color accent) {
@@ -283,6 +409,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildList() {
     return _ScrollAnimatedList(
+      // A new vehicle is a new list: replay the entrance animation.
+      key: ValueKey(_vehicle?.id),
       logs: _logs,
       distanceToNext: _distanceToNext,
       efficiencyMap: _efficiencyMap,
@@ -294,9 +422,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _goToAdd() {
+    // The FAB shows while the first load runs; there is no vehicle yet.
+    final vehicle = _vehicle;
+    if (vehicle == null) return;
     Navigator.push(
       context,
-      SmoothPageRoute(page: const EntryFormScreen()),
+      SmoothPageRoute(page: EntryFormScreen(vehicleId: vehicle.id)),
     ).then((_) => _loadData());
   }
 
@@ -310,7 +441,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _goToStats() {
     Navigator.push(
       context,
-      SmoothPageRoute(page: const StatsScreen()),
+      SmoothPageRoute(page: StatsScreen(vehicle: _vehicle!)),
     );
   }
 
@@ -339,6 +470,7 @@ class _ScrollAnimatedList extends StatefulWidget {
   final void Function(FuelLog) onDelete;
 
   const _ScrollAnimatedList({
+    super.key,
     required this.logs,
     required this.distanceToNext,
     required this.efficiencyMap,

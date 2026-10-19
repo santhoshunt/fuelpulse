@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
+import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/utils/efficiency_calculator.dart';
 
 FuelLog _log({
@@ -13,6 +14,7 @@ FuelLog _log({
   double? pricePerLitre,
 }) =>
     FuelLog(
+      vehicleId: kDefaultVehicleId,
       id: id,
       timestamp: '2026-08-01T09:00:00.000',
       odometer: odometer,

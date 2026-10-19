@@ -17,11 +17,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
+import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/models/theme_preference.dart';
 import 'package:fuelpulse/screens/entry_form_screen.dart';
 import 'package:fuelpulse/screens/home_screen.dart';
 import 'package:fuelpulse/screens/stats_screen.dart';
-import 'package:fuelpulse/utils/constants.dart';
 import 'package:fuelpulse/utils/theme_manager.dart' as tm;
 
 FuelLog _log(
@@ -35,6 +35,7 @@ FuelLog _log(
   double? price,
 }) =>
     FuelLog(
+      vehicleId: kDefaultVehicleId,
       id: 'seed-$n',
       timestamp: '${date}T09:30:00.000',
       odometer: odometer,
@@ -66,7 +67,27 @@ final _seed = [
       fuelType: 'XP-95', price: 112.0),
   _log(11, '2026-10-07', 16540, 29.5, 'Indian Oil', price: 101.5),
   _log(12, '2026-10-16', 16880, 18.0, 'HP', full: false, price: 102.9),
+  // A second vehicle, so the picker has something to switch to.
+  _log(13, '2026-09-10', 4200, 5.0, 'Indian Oil', price: 101.8)
+      .copyWith(vehicleId: _bike.id),
+  _log(14, '2026-09-30', 4410, 4.8, 'HP', price: 102.6)
+      .copyWith(vehicleId: _bike.id),
 ];
+
+/// The default vehicle, renamed and given a tank, as a user would.
+const _car = Vehicle(
+    id: kDefaultVehicleId,
+    name: 'Swift',
+    tankCapacity: 37,
+    createdAt: '2026-06-01T00:00:00.000');
+
+const _bike = Vehicle(
+    id: 'bike',
+    name: 'Activa',
+    type: VehicleType.bike,
+    tankCapacity: 5.3,
+    sortOrder: 1,
+    createdAt: '2026-09-01T00:00:00.000');
 
 Future<void> _loadFont(String family, List<String> paths) async {
   final loader = FontLoader(family);
@@ -101,15 +122,18 @@ void main() {
 
     // The analyzer only treats test/ as test code; this file is a test too.
     // ignore: invalid_use_of_visible_for_testing_member
-    SharedPreferences.setMockInitialValues({kTankCapacityKey: 40.0});
+    SharedPreferences.setMockInitialValues({});
 
     // Isolated database: never the shared .dart_tool one other tests use.
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfiNoIsolate;
     await databaseFactory.setDatabasesPath(
         Directory.systemTemp.createTempSync('fuelpulse_shots_').path);
-    await DatabaseHelper().deleteAllLogs();
-    await DatabaseHelper().insertLogs(_seed);
+    final db = DatabaseHelper();
+    await db.resetToDefaultVehicle();
+    await db.updateVehicle(_car);
+    await db.insertVehicle(_bike);
+    await db.insertLogs(_seed);
   });
 
   Future<void> capture(
@@ -149,16 +173,31 @@ void main() {
     );
   });
 
+  testWidgets('vehicle picker', (tester) async {
+    await capture(
+      tester,
+      HomeScreen(theme: ThemePreference.defaults, onThemeChanged: (_) {}),
+      'vehicles',
+      before: () async {
+        await tester.tap(find.text('Swift'));
+        await tester.runAsync(
+            () => Future.delayed(const Duration(milliseconds: 100)));
+        await tester.pumpAndSettle();
+      },
+    );
+  });
+
   testWidgets('add fill-up', (tester) async {
-    await capture(tester, const EntryFormScreen(), 'add_fill_up');
+    await capture(tester, const EntryFormScreen(vehicleId: kDefaultVehicleId),
+        'add_fill_up');
   });
 
   testWidgets('stats', (tester) async {
-    await capture(tester, const StatsScreen(), 'stats');
+    await capture(tester, const StatsScreen(vehicle: _car), 'stats');
   });
 
   testWidgets('stats trends', (tester) async {
-    await capture(tester, const StatsScreen(), 'stats_trends',
+    await capture(tester, const StatsScreen(vehicle: _car), 'stats_trends',
         before: () async {
       await tester.ensureVisible(find.text('Trends'));
       await tester.pumpAndSettle();

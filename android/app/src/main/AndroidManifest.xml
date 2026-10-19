@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Required for the Google Drive backup. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- In-app updates: installs a downloaded release of this app. The
+         native side installs only this package, signed with this app's own
+         key and newer than the installed build (UpdateInstaller.kt). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="FuelPulse"
         android:name="${applicationName}"
@@ -42,6 +46,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- The update sheet's "Release page" link opens in a browser. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

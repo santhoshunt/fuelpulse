@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +12,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+  // Own database file: test files run in parallel processes, and the
+  // default path is shared by every file that does not set one.
+  setUpAll(() async {
+    await databaseFactory.setDatabasesPath(
+        Directory.systemTemp.createTempSync('fuelpulse_drive_backup_service_').path);
+  });
 
   group('isDue', () {
     final now = DateTime(2026, 8, 10, 9);

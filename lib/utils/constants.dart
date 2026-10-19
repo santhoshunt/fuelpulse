@@ -7,6 +7,14 @@ const String kThemeAccentKey = 'fuel_theme_accent';
 const String kThemeLightKey = 'fuel_theme_light';
 const String kFuelTypesKey = 'fuel_fuel_types';
 const String kPumpBrandsKey = 'fuel_pump_brands';
+// Which vehicle Home, the fill-up form and Statistics show (vehicle id).
+const String kActiveVehicleKey = 'fuel_active_vehicle';
+// In-app updater: daily check switch, last check time, the tag answered
+// with "Not now", and the tag an install was started for.
+const String kUpdateOnLaunchKey = 'fuel_update_on_launch';
+const String kUpdateLastCheckKey = 'fuel_update_last_check';
+const String kUpdateDismissedKey = 'fuel_update_dismissed';
+const String kUpdateInstallingKey = 'fuel_update_installing';
 
 // ── Fuel types ───────────────────────────────────────────────────────
 const String kDefaultFuelType = 'Normal';

@@ -12,12 +12,14 @@
 
 ## Overview
 
-FuelPulse records every fuel fill-up and works out **real-world mileage** for each full-tank segment. It compares pump brands and fuel types, tracks what you spend, and estimates how much fuel is left in the tank. Your data lives in a SQLite database on the phone and needs no account or internet connection. Google Drive backup is optional and off until you sign in.
+FuelPulse records every fuel fill-up and works out **real-world mileage** for each full-tank segment, for each of your vehicles. It compares pump brands and fuel types, tracks what you spend, and estimates how much fuel is left in the tank. Your data lives in a SQLite database on the phone and needs no account or internet connection. Google Drive backup is optional and off until you sign in.
 
 ## Features
 
 | Feature | Description |
 |---|---|
+| **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, statistics, trend charts and tank size; switch with the chip under the title |
+| **In-app updates** | Checks GitHub once a day and offers new versions. It downloads the APK for your phone's processor and installs it only if it is FuelPulse, signed with the same key and newer |
 | **Segment-based efficiency** | Calculates km/L between consecutive full-tank entries — shows the exact *"X km ÷ Y L"* breakdown |
 | **Brand comparison** | Ranks fuel brands by average efficiency with visual bars and delta indicators |
 | **Fuel types** | Tag each fill-up with a fuel type. Normal is built in, and you can add others such as XP-95. Statistics compares km/L and ₹/km per type |
@@ -26,8 +28,8 @@ FuelPulse records every fuel fill-up and works out **real-world mileage** for ea
 | **Pump brand management** | Add, rename and remove pump brands. A rename updates every past fill-up |
 | **Tank level estimation** | Forward-walk model estimates remaining litres at each fill-up |
 | **Full / Partial fill tracking** | Handles both full-tank and partial-fill entries correctly |
-| **CSV import / export** | Backup and restore your data via CSV files |
-| **Backup file** | Export one compressed file with fill-ups, fuel types, pump brands and settings, and restore it on any phone |
+| **CSV import / export** | Export or import the current vehicle's fill-ups as CSV |
+| **Backup file** | Export one compressed file with every vehicle, its fill-ups, fuel types, pump brands and settings, and restore it on any phone |
 | **Google Drive backup** | Optional daily, weekly or monthly upload of the same backup file. The app can only see files it created in your Drive |
 | **Custom brand colours** | Assign a colour to each fuel brand for quick visual identification |
 | **Dark glossy UI** | Performant CustomPaint-based glossy card design — no BackdropFilter overhead |
@@ -41,6 +43,8 @@ FuelPulse records every fuel fill-up and works out **real-world mileage** for ea
 | ![Home screen with fill-up history](screenshots/home.png) | ![Add fill-up form](screenshots/add_fill_up.png) |
 | **Statistics** | **Trends** |
 | ![Statistics screen with brand ranking](screenshots/stats.png) | ![Efficiency and cost per km trend charts](screenshots/stats_trends.png) |
+| **Vehicles** | |
+| ![Vehicle picker with a car and a bike](screenshots/vehicles.png) | |
 
 The screenshots come from sample data rendered offscreen. To regenerate them, run:
 
@@ -57,6 +61,7 @@ flutter test tool/readme_screenshots_test.dart --update-goldens
 - **CSV:** [csv](https://pub.dev/packages/csv) + [share_plus](https://pub.dev/packages/share_plus)
 - **Backup:** [file_picker](https://pub.dev/packages/file_picker) for restore, [google_sign_in](https://pub.dev/packages/google_sign_in) + [googleapis](https://pub.dev/packages/googleapis) for Drive
 - **Charts:** drawn with `CustomPaint`, no chart package
+- **Updates:** [http](https://pub.dev/packages/http) for the GitHub release check and download, a Kotlin `PackageInstaller` bridge for the install, [url_launcher](https://pub.dev/packages/url_launcher) for the release page
 - **Theming:** Custom `ThemeManager` with dynamic brand colours via [flutter_colorpicker](https://pub.dev/packages/flutter_colorpicker)
 
 ## Project Structure
@@ -68,17 +73,23 @@ lib/
 │   └── database_helper.dart   # SQLite CRUD operations
 ├── models/
 │   ├── fuel_log.dart          # FuelLog data model
+│   ├── vehicle.dart           # Vehicle data model
 │   └── theme_preference.dart  # Theme/colour preferences model
 ├── screens/
 │   ├── home_screen.dart       # Main log list + summary banner
 │   ├── entry_form_screen.dart # Add or edit a fill-up
 │   ├── stats_screen.dart      # Stat cards, trends, cost, rankings
-│   └── settings_screen.dart   # Tank capacity, brands, fuel types, backup, theme
+│   ├── settings_screen.dart   # Settings, one section per file below
+│   └── settings/              # Vehicles, lists, data, Drive, theme, about, danger zone
 ├── services/
 │   ├── backup_payload.dart    # Build and restore the backup contents
 │   ├── backup_codec.dart      # Gzip encode/decode of the backup
 │   ├── backup_file.dart       # Export/import the backup as a file
-│   └── drive_backup_service.dart # Scheduled Google Drive backup
+│   ├── drive_backup_service.dart # Scheduled Google Drive backup
+│   ├── update_service.dart    # GitHub release check
+│   ├── update_downloader.dart # Checked APK download
+│   ├── update_installer.dart  # Bridge to the Kotlin installer
+│   └── update_prefs.dart      # Update check settings
 ├── utils/
 │   ├── efficiency_calculator.dart  # Segment-based km/L, brand and fuel type ranking
 │   ├── trend_calculator.dart       # One km/L and ₹/km point per segment
@@ -86,6 +97,7 @@ lib/
 │   ├── tank_level_calculator.dart  # Estimated fuel-in-tank model
 │   ├── fuel_type_manager.dart      # Fuel type list (add, rename, delete)
 │   ├── pump_brand_manager.dart     # Pump brand list (add, rename, delete)
+│   ├── vehicle_manager.dart        # Active vehicle
 │   ├── csv_helper.dart             # CSV import/export
 │   ├── page_routes.dart            # Smooth fade+slide transitions
 │   ├── theme_manager.dart          # Dynamic theme/colour manager
@@ -101,12 +113,28 @@ lib/
     ├── color_swatch_picker.dart # Brand colour picker
     ├── option_picker.dart      # Bottom-sheet picker for type and brand
     ├── add_fuel_type_dialog.dart # Name dialog for a new type or brand
+    ├── vehicle_chip.dart       # Home screen vehicle switcher
+    ├── vehicle_picker.dart     # Vehicle picker sheet and edit dialog
+    ├── update_banner.dart      # Update available card
+    ├── update_sheet.dart       # Version picker, download and install
     └── mode_switch.dart        # Odometer / KM travelled toggle
 ```
 
 ## Download
 
-Pre-built Android APKs are available on the [Releases](https://github.com/santhoshunt/fuelpulse/releases/latest) page.
+Pre-built Android APKs are available on the [Releases](https://github.com/santhoshunt/fuelpulse/releases/latest) page. From v2.0.0 on, the app finds and installs updates itself, so this is only needed once.
+
+### Which APK do I need?
+
+- **arm64-v8a**: almost every Android phone. Pick this one if unsure.
+- **armeabi-v7a**: phones from before about 2017 that the arm64 file will not install on.
+- **x86_64**: emulators and Intel-based devices only. Phones show "App not installed" for it.
+
+Not sure? Try arm64-v8a first. If Android says the app can't be installed, use armeabi-v7a.
+
+Backup files made by v2.0.0 or later carry vehicles. Restore them only in v2.0.0 or later: an older FuelPulse loads the fill-ups but drops which vehicle each belongs to.
+
+On v1.0.0 or v1.1.0? Those builds were signed with a different key, so Android will not install a newer version over them. Export a backup in Settings, uninstall, install the new APK, then import the backup.
 
 | APK | Architecture | Notes |
 |---|---|---|

@@ -43,10 +43,19 @@ List<List<dynamic>> buildCsvRows(List<FuelLog> logs) {
   ];
 }
 
-Future<void> exportCsv(List<FuelLog> logs) async {
+/// "Swift Dzire!" → "swift-dzire": the vehicle part of an export file name.
+String vehicleSlug(String name) {
+  final slug = name
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  return slug.isEmpty ? 'vehicle' : slug;
+}
+
+Future<void> exportCsv(List<FuelLog> logs, {required String vehicleName}) async {
   final csvString = const ListToCsvConverter().convert(buildCsvRows(logs));
   final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-  final fileName = 'fuelpulse_$dateStr.csv';
+  final fileName = 'fuelpulse_${vehicleSlug(vehicleName)}_$dateStr.csv';
 
   final dir = await getTemporaryDirectory();
   final file = File('${dir.path}/$fileName');
@@ -62,7 +71,7 @@ Future<void> exportCsv(List<FuelLog> logs) async {
 /// Parse a CSV file and return a list of FuelLog entries.
 /// Returns null if the user cancels the file picker.
 /// Throws on invalid CSV format (missing required columns).
-Future<List<FuelLog>?> importCsv() async {
+Future<List<FuelLog>?> importCsv({required String vehicleId}) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: ['csv'],
@@ -75,7 +84,7 @@ Future<List<FuelLog>?> importCsv() async {
   final content = await File(filePath).readAsString();
   final rows = const CsvToListConverter(eol: '\n').convert(content);
 
-  return parseCsvRows(rows);
+  return parseCsvRows(rows, vehicleId: vehicleId);
 }
 
 /// Resolve columns and parse data rows. Extracted from [importCsv] so it can
@@ -83,7 +92,9 @@ Future<List<FuelLog>?> importCsv() async {
 /// match wins, then substring; a column claimed by an earlier lookup is
 /// never matched again (so "pricePerLitre" cannot steal the litres lookup,
 /// and "totalCost" cannot double-match as a price column).
-List<FuelLog> parseCsvRows(List<List<dynamic>> rows) {
+/// Every parsed log is assigned to [vehicleId]: CSV carries no vehicle.
+List<FuelLog> parseCsvRows(List<List<dynamic>> rows,
+    {required String vehicleId}) {
   if (rows.isEmpty) throw FormatException('CSV file is empty');
 
   final headers =
@@ -192,6 +203,7 @@ List<FuelLog> parseCsvRows(List<List<dynamic>> rows) {
     }
 
     logs.add(FuelLog(
+      vehicleId: vehicleId,
       id: FuelLog.generateId(),
       timestamp: timestamp,
       odometer: odoVal,

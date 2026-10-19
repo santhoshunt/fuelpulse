@@ -1,7 +1,7 @@
 name: fuelpulse
 description: "FuelPulse — Offline fuel fill-up tracker with km/L efficiency and brand comparison."
 publish_to: 'none'
-version: 1.3.0+4
+version: 2.0.0+5
 
 environment:
   sdk: ^3.11.0
@@ -26,6 +26,12 @@ dependencies:
   google_sign_in: ^6.2.0
   googleapis: ^12.0.0
   extension_google_sign_in_as_googleapis_auth: ^2.0.0
+  # In-app updater (ported from the expense tracker): GitHub release list and
+  # APK download, plus the release-page fallback link. The app version comes
+  # from the update method channel, not package_info_plus, whose 10.x needs
+  # win32 6 while the plugins above resolve win32 5.
+  http: ^1.2.0
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

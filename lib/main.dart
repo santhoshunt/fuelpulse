@@ -5,9 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'models/theme_preference.dart';
 import 'screens/home_screen.dart';
+import 'utils/vehicle_manager.dart';
 import 'utils/theme_manager.dart' as tm;
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize FFI for desktop platforms (Linux, Windows, macOS).
@@ -15,6 +16,14 @@ void main() {
   if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfiNoIsolate;
+  }
+
+  // One-time move of the pre-v2.0.0 global tank capacity onto the default
+  // vehicle. A failure here must not stop the app from starting.
+  try {
+    await migrateLegacyTankCapacity();
+  } catch (e) {
+    debugPrint('Tank capacity migration failed: $e');
   }
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

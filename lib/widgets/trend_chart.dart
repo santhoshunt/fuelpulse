@@ -3,6 +3,13 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../utils/constants.dart';
 import 'glossy_card.dart';
 
+/// Month axis labels for a chart running from [first] to [last]: "Jun", or
+/// "Jun '26" once the range crosses a year boundary, where a bare "Jan"
+/// would be ambiguous.
+@visibleForTesting
+DateFormat monthLabelFormat(DateTime first, DateTime last) =>
+    first.year == last.year ? DateFormat('MMM') : DateFormat("MMM ''yy");
+
 /// One value at one moment on a [TrendChart].
 class TrendPoint {
   final DateTime x;
@@ -35,18 +42,37 @@ class TrendChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
+    // Shown beside the title rather than inside the plot, where it could sit
+    // on top of a data point.
+    final mean = points.length < 2
+        ? null
+        : points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
 
     return GlossyCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: kTextPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: kTextPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (mean != null)
+                Text(
+                  'avg ${formatValue(mean)}',
+                  style: const TextStyle(color: kTextSecondary, fontSize: 12),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           if (points.length < 2)
@@ -143,11 +169,12 @@ class _TrendChartPainter extends CustomPainter {
     // ── Month labels along the bottom ──
     final first = points.first.x;
     final last = points.last.x;
+    final monthFormat = monthLabelFormat(first, last);
     final ticks = <(double, String)>[];
     var month = DateTime(first.year, first.month);
     while (!month.isAfter(last)) {
       final at = month.isBefore(first) ? first : month;
-      ticks.add((timePx(at), DateFormat('MMM').format(month)));
+      ticks.add((timePx(at), monthFormat.format(month)));
       month = DateTime(month.year, month.month + 1);
     }
     final step = (ticks.length / 4).ceil();
@@ -162,20 +189,16 @@ class _TrendChartPainter extends CustomPainter {
       lastRight = left + tp.width;
     }
 
-    // ── Dashed average line ──
+    // ── Dashed average line (its value is labelled in the title row) ──
     final mean = ys.reduce((a, b) => a + b) / ys.length;
     final meanY = yPx(mean);
-    final avgColor = kTextSecondary.withValues(alpha: 0.5);
     final dashPaint = Paint()
-      ..color = avgColor
+      ..color = kTextSecondary.withValues(alpha: 0.5)
       ..strokeWidth = 1;
     for (double x = plot.left; x < plot.right; x += 8) {
       final end = (x + 4).clamp(plot.left, plot.right);
       canvas.drawLine(Offset(x, meanY), Offset(end, meanY), dashPaint);
     }
-    final avgLabel = _text('avg ${formatValue(mean)}', avgColor);
-    avgLabel.paint(
-        canvas, Offset(plot.right - avgLabel.width, meanY - avgLabel.height - 2));
 
     // ── Data line and dots ──
     final path = Path();

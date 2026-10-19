@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # A manual run from main builds, tests and verifies the APKs, then uploads
+  # them as a workflow artifact instead of publishing a release, so changes
+  # to this file can be tried before a real tag.
+  workflow_dispatch:
 
 permissions:
   contents: write # create the release and upload assets
@@ -50,6 +54,19 @@ jobs:
           keyAlias=fuelpulse
           EOF
 
+      # The in-app updater shows the release body as the update's notes, so
+      # a tagged release must bring its own instead of the near-empty
+      # generated ones.
+      # Guards test the event as well as the ref: the "Run workflow" dialog
+      # can be pointed at a tag, and a manual run must never publish.
+      - name: Require release notes for the tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          test -s "release-notes/${GITHUB_REF_NAME}.md" || {
+            echo "::error::Missing release-notes/${GITHUB_REF_NAME}.md"
+            exit 1
+          }
+
       - run: flutter pub get
       - run: flutter test # never ship a red build
       - run: flutter build apk --release --split-per-abi
@@ -64,6 +81,15 @@ jobs:
           "$BT/apksigner" verify --print-certs build/app/outputs/flutter-apk/app-arm64-v8a-release.apk | grep -q 'CN=FuelPulse'
 
       - uses: softprops/action-gh-release@v3
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         with:
           files: build/app/outputs/flutter-apk/app-*-release.apk
-          generate_release_notes: true
+          body_path: release-notes/${{ github.ref_name }}.md
+          generate_release_notes: true # appends the changelog link
+
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: fuelpulse-apks
+          path: build/app/outputs/flutter-apk/app-*-release.apk
+          retention-days: 3

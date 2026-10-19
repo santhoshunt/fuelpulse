@@ -1,0 +1,274 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+import 'update_installer.dart';
+
+// Ported from the expense tracker's updater. The difference: FuelPulse
+// publishes one APK per processor architecture (--split-per-abi), so a
+// release option is for one ABI, the one this phone runs.
+
+/// The architectures FuelPulse publishes an APK for. Which one a phone gets
+/// is decided on the Kotlin side, from the phone's own Build.SUPPORTED_ABIS
+/// order; keep this list in step with PUBLISHED_ABIS in UpdateInstaller.kt.
+const kSupportedAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64'];
+
+/// One release the app may update to. Every field was checked by
+/// [UpdateService.parseReleases]; [downloadUrl] is always this repo's own
+/// release asset URL for [tag] and [abi].
+@immutable
+class ReleaseOption {
+  final String tag;
+  final String abi;
+  final DateTime? publishedAt;
+  final int sizeBytes;
+
+  /// The release body as plain text ([UpdateService.plainNotes]).
+  final String notes;
+  final String downloadUrl;
+
+  const ReleaseOption({
+    required this.tag,
+    required this.abi,
+    required this.publishedAt,
+    required this.sizeBytes,
+    required this.notes,
+    required this.downloadUrl,
+  });
+
+  /// The release's page on GitHub, for the browser fallback.
+  String get pageUrl => '${UpdateService.releasesPageUrl}/tag/$tag';
+}
+
+/// The releases newer than [currentVersion], newest first. Never empty when
+/// it is published through [availableUpdate].
+@immutable
+class UpdateList {
+  final String currentVersion;
+  final List<ReleaseOption> newer;
+  const UpdateList(this.currentVersion, this.newer);
+}
+
+/// Outcome of a "Check for updates".
+sealed class UpdateCheckResult {
+  const UpdateCheckResult();
+}
+
+class UpToDate extends UpdateCheckResult {
+  final String currentVersion;
+  const UpToDate(this.currentVersion);
+}
+
+class UpdateAvailable extends UpdateCheckResult {
+  final UpdateList updates;
+  const UpdateAvailable(this.updates);
+
+  /// The newest release's tag, e.g. `v2.1.0`.
+  String get latestTag => updates.newer.first.tag;
+
+  /// The newest release's page, where the APK assets live.
+  String get htmlUrl => updates.newer.first.pageUrl;
+}
+
+class CheckFailed extends UpdateCheckResult {
+  final String message;
+  const CheckFailed(this.message);
+}
+
+/// What the last successful check found, for the Home banner: null until a
+/// check finds something newer.
+final ValueNotifier<UpdateList?> availableUpdate = ValueNotifier(null);
+
+/// Whether the launch check is due: switched on, and a day or more since
+/// the last one (or never run).
+bool shouldCheckForUpdate({
+  required bool enabled,
+  required DateTime? lastCheck,
+  required DateTime now,
+}) {
+  if (!enabled) return false;
+  if (lastCheck == null) return true;
+  return now.difference(lastCheck) >= const Duration(hours: 24);
+}
+
+/// Update check against the app's GitHub releases. Settings calls it on
+/// demand; HomeScreen runs it once a day when that is switched on.
+class UpdateService {
+  static const repo = 'santhoshunt/fuelpulse';
+
+  static const releasesListUrl =
+      'https://api.github.com/repos/$repo/releases?per_page=30';
+
+  /// The human-facing list of every release, for the browser.
+  static const releasesPageUrl = 'https://github.com/$repo/releases';
+
+  /// The only asset the app will download for [abi].
+  static String assetNameFor(String abi) => 'app-$abi-release.apk';
+
+  /// Larger than any real build (about 25 MB per architecture), small
+  /// enough that a bogus size cannot fill the phone.
+  static const maxAssetBytes = 120 * 1024 * 1024;
+
+  /// The one download URL a release may carry for [tag] and [abi].
+  static String assetUrlFor(String tag, String abi) =>
+      'https://github.com/$repo/releases/download/$tag/${assetNameFor(abi)}';
+
+  static final _tagPattern = RegExp(r'^v\d+(\.\d+){1,3}$');
+
+  /// Injectable so tests can supply a MockClient.
+  final http.Client Function() _clientFactory;
+
+  /// Injectable so tests don't need the platform channel.
+  final Future<String> Function() _currentVersion;
+  final Future<String?> Function() _primaryAbi;
+
+  UpdateService({
+    http.Client Function()? clientFactory,
+    Future<String> Function()? currentVersion,
+    Future<String?> Function()? primaryAbi,
+  })  : _clientFactory = clientFactory ?? http.Client.new,
+        _currentVersion =
+            currentVersion ?? ChannelUpdateInstaller.instance.currentVersion,
+        _primaryAbi = primaryAbi ?? ChannelUpdateInstaller.instance.primaryAbi;
+
+  /// Compares two dotted version strings (a leading `v` and any `+build`
+  /// suffix are ignored): negative when [a] < [b], 0 when equal or either
+  /// side is unreadable (an unparseable tag must not announce an update).
+  static int compareVersions(String a, String b) {
+    List<int>? parse(String s) {
+      var v = s.trim();
+      if (v.startsWith('v') || v.startsWith('V')) v = v.substring(1);
+      v = v.split('+').first;
+      if (v.isEmpty) return null;
+      final parts = v.split('.').map(int.tryParse).toList();
+      if (parts.any((p) => p == null || p < 0)) return null;
+      return parts.cast<int>();
+    }
+
+    final pa = parse(a);
+    final pb = parse(b);
+    if (pa == null || pb == null) return 0;
+    for (var i = 0; i < pa.length || i < pb.length; i++) {
+      final x = i < pa.length ? pa[i] : 0;
+      final y = i < pb.length ? pb[i] : 0;
+      if (x != y) return x.compareTo(y);
+    }
+    return 0;
+  }
+
+  /// GitHub's release body is Markdown ("**Full Changelog**: ...", "* Fix by
+  /// @x in ..."); the sheet shows plain text, so the markup goes: bold and
+  /// code marks, heading hashes, `[text](url)` down to its text, and list
+  /// markers become bullets.
+  static String plainNotes(String markdown) {
+    final lines = <String>[];
+    for (var line in markdown.replaceAll('\r\n', '\n').split('\n')) {
+      line = line.trimRight();
+      line = line.replaceFirst(RegExp(r'^\s{0,3}#{1,6}\s+'), '');
+      line = line.replaceFirstMapped(
+        RegExp(r'^(\s*)[*+-]\s+'),
+        (m) => '${m[1]}• ',
+      );
+      line = line.replaceAllMapped(
+        RegExp(r'\[([^\]]+)\]\([^)]*\)'),
+        (m) => m[1]!,
+      );
+      // Paired marks at word edges only, so FOO__BAR and a lone ** keep
+      // their text.
+      line = line.replaceAllMapped(
+        RegExp(r'(?<!\w)(\*\*|__)(?=\S)(.+?)(?<=\S)\1(?!\w)'),
+        (m) => m[2]!,
+      );
+      line = line.replaceAllMapped(RegExp(r'`([^`]*)`'), (m) => m[1]!);
+      lines.add(line);
+    }
+    return lines.join('\n').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  }
+
+  /// The releases in a GitHub `/releases` response that the app may offer
+  /// to a phone running [abi], newest first. The response is data from the
+  /// network, so anything that does not look exactly like this repo's own
+  /// release is dropped: drafts and prereleases, tags that are not newer or
+  /// not `vX.Y.Z`, and any release without exactly one APK for [abi] at its
+  /// own URL with a sane size.
+  static List<ReleaseOption> parseReleases(
+      Object? json, String current, String abi) {
+    if (json is! List) return const [];
+    final assetName = assetNameFor(abi);
+    final out = <ReleaseOption>[];
+    for (final r in json) {
+      if (r is! Map) continue;
+      if (r['draft'] != false || r['prerelease'] != false) continue;
+      final tag = r['tag_name'];
+      if (tag is! String || !_tagPattern.hasMatch(tag)) continue;
+      if (compareVersions(current, tag) >= 0) continue;
+      final assets = r['assets'];
+      if (assets is! List) continue;
+      final apks = [
+        for (final a in assets)
+          if (a is Map && a['name'] == assetName) a,
+      ];
+      if (apks.length != 1) continue;
+      final apk = apks.single;
+      if (apk['browser_download_url'] != assetUrlFor(tag, abi)) continue;
+      final size = apk['size'];
+      if (size is! int || size <= 0 || size > maxAssetBytes) continue;
+      final body = r['body'];
+      final published = r['published_at'];
+      out.add(
+        ReleaseOption(
+          tag: tag,
+          abi: abi,
+          publishedAt: published is String
+              ? DateTime.tryParse(published)?.toLocal()
+              : null,
+          sizeBytes: size,
+          notes: body is String ? plainNotes(body) : '',
+          downloadUrl: assetUrlFor(tag, abi),
+        ),
+      );
+    }
+    out.sort((a, b) => compareVersions(b.tag, a.tag));
+    return out;
+  }
+
+  /// The releases newer than this build, or why they could not be listed.
+  Future<UpdateCheckResult> check() async {
+    final String current;
+    final String? abi;
+    try {
+      current = await _currentVersion();
+      abi = await _primaryAbi();
+    } catch (e) {
+      return CheckFailed('Could not read the app version: $e');
+    }
+    if (abi == null) {
+      return const CheckFailed("This phone's processor has no FuelPulse build.");
+    }
+    final client = _clientFactory();
+    try {
+      final response = await client
+          .get(
+            Uri.parse(releasesListUrl),
+            headers: const {'Accept': 'application/vnd.github+json'},
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        return CheckFailed('GitHub returned HTTP ${response.statusCode}');
+      }
+      final data = jsonDecode(response.body);
+      if (data is! List) {
+        return const CheckFailed('Unexpected response from GitHub');
+      }
+      final newer = parseReleases(data, current, abi);
+      return newer.isEmpty
+          ? UpToDate(current)
+          : UpdateAvailable(UpdateList(current, newer));
+    } catch (e) {
+      return CheckFailed('Could not reach GitHub: $e');
+    } finally {
+      client.close();
+    }
+  }
+}

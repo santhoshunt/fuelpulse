@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'vehicle.dart';
+
 class FuelLog {
   final String id;
   final String timestamp;
@@ -18,7 +20,13 @@ class FuelLog {
   /// deriving one from the other would silently rewrite history.
   final double? pricePerLitre;
 
+  /// The vehicle this fill-up belongs to. Required, so no code path can
+  /// write a log without saying whose it is; only [FuelLog.fromMap] falls
+  /// back to [kDefaultVehicleId], for data from before vehicles existed.
+  final String vehicleId;
+
   FuelLog({
+    required this.vehicleId,
     required this.id,
     required this.timestamp,
     required this.odometer,
@@ -50,11 +58,15 @@ class FuelLog {
       'fuelType': fuelType,
       'totalCost': totalCost,
       'pricePerLitre': pricePerLitre,
+      'vehicleId': vehicleId,
     };
   }
 
   factory FuelLog.fromMap(Map<String, dynamic> map) {
     return FuelLog(
+      vehicleId: (map['vehicleId'] as String?)?.isNotEmpty == true
+          ? map['vehicleId'] as String
+          : kDefaultVehicleId,
       id: map['id'] as String,
       timestamp: map['timestamp'] as String,
       // `as num` because JSON restore can deliver ints as doubles.
@@ -84,8 +96,10 @@ class FuelLog {
     bool clearTotalCost = false,
     double? pricePerLitre,
     bool clearPricePerLitre = false,
+    String? vehicleId,
   }) {
     return FuelLog(
+      vehicleId: vehicleId ?? this.vehicleId,
       id: id ?? this.id,
       timestamp: timestamp ?? this.timestamp,
       odometer: odometer ?? this.odometer,
@@ -102,6 +116,6 @@ class FuelLog {
 
   @override
   String toString() {
-    return 'FuelLog(id: $id, odo: $odometer, liters: $liters, brand: $pumpBrand, full: $fullTank, type: $fuelType)';
+    return 'FuelLog(id: $id, odo: $odometer, liters: $liters, brand: $pumpBrand, full: $fullTank, type: $fuelType, vehicle: $vehicleId)';
   }
 }

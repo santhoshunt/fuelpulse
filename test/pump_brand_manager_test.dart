@@ -1,13 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
+import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/utils/constants.dart';
 import 'package:fuelpulse/utils/pump_brand_manager.dart';
 
 FuelLog _log(String id, String brand) => FuelLog(
+      vehicleId: kDefaultVehicleId,
       id: id,
       timestamp: '2026-08-01T09:00:00.000',
       odometer: 1000,
@@ -19,6 +23,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+  // Own database file: test files run in parallel processes, and the
+  // default path is shared by every file that does not set one.
+  setUpAll(() async {
+    await databaseFactory.setDatabasesPath(
+        Directory.systemTemp.createTempSync('fuelpulse_pump_brand_manager_').path);
+  });
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});

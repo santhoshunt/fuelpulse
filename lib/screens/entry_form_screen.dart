@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
+import '../models/vehicle.dart';
 import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/fuel_type_manager.dart';
@@ -16,7 +17,13 @@ class EntryFormScreen extends StatefulWidget {
   /// Null opens the form to add a new fill-up; an id opens that log for editing.
   final String? logId;
 
-  const EntryFormScreen({super.key, this.logId});
+  /// The vehicle a new fill-up is added to. Required when adding; editing
+  /// uses the log's own vehicle.
+  final String? vehicleId;
+
+  const EntryFormScreen({super.key, this.logId, this.vehicleId})
+      : assert(logId != null || vehicleId != null,
+            'Adding a fill-up needs the vehicle it belongs to');
 
   @override
   State<EntryFormScreen> createState() => _EntryFormScreenState();
@@ -30,6 +37,10 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
 
   bool _isKmMode = false;
   FuelLog? _original;
+
+  /// Named in the title, so a fill-up is never logged to the wrong vehicle
+  /// unnoticed.
+  Vehicle? _vehicle;
 
   /// Odometer that KM mode counts from: the latest log when adding, the log
   /// just before this one when editing. Null disables KM mode.
@@ -72,10 +83,13 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
 
   Future<void> _loadForAdd() async {
     try {
-      final last = await _db.getLastLog();
+      final vehicle = await _db.getVehicle(widget.vehicleId!);
+      final last = await _db.getLastLog(widget.vehicleId!);
       final types = await loadFuelTypes();
       final brands = await loadPumpBrands();
+      if (!mounted) return;
       setState(() {
+        _vehicle = vehicle;
         _baseOdometer = last?.odometer;
         _fuelTypes = types;
         if (!types.contains(_selectedFuelType)) {
@@ -99,7 +113,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     }
 
     // Find previous log for KM mode calculation
-    final chrono = await _db.getAllLogsChrono();
+    final chrono = await _db.getAllLogsChrono(log.vehicleId);
     final idx = chrono.indexWhere((l) => l.id == log.id);
     int? prevOdo;
     if (idx > 0) prevOdo = chrono[idx - 1].odometer;
@@ -112,8 +126,12 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     final brands = await loadPumpBrands();
     if (!brands.contains(log.pumpBrand)) brands.insert(0, log.pumpBrand);
 
+    final vehicle = await _db.getVehicle(log.vehicleId);
+    if (!mounted) return;
+
     setState(() {
       _original = log;
+      _vehicle = vehicle;
       _baseOdometer = prevOdo;
       // Prefill without triggering the cost-linking listeners.
       _syncingCost = true;
@@ -327,6 +345,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
         await _db.updateLog(updated);
       } else {
         final log = FuelLog(
+          vehicleId: widget.vehicleId!,
           id: FuelLog.generateId(),
           timestamp: DateTime.now().toIso8601String(),
           odometer: odometer,
@@ -416,7 +435,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    final title = _isEdit ? 'Edit Fill-up' : 'Add Fill-up';
+    final action = _isEdit ? 'Edit Fill-up' : 'Add Fill-up';
+    final title = _vehicle == null ? action : '$action · ${_vehicle!.name}';
 
     if (_loading) {
       return Scaffold(
@@ -463,7 +483,11 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                         ? 'Enter distance driven'
                         : 'Enter odometer reading';
                   }
-                  if (int.tryParse(v.trim()) == null) return 'Invalid number';
+                  final n = int.tryParse(v.trim());
+                  if (n == null) return 'Invalid number';
+                  // A negative distance would save an odometer below the
+                  // last reading, skipping the backward-odometer warning.
+                  if (_isKmMode && n < 0) return "Distance can't be negative";
                   return null;
                 },
               ),
