@@ -8,9 +8,10 @@ on:
 
 jobs:
   analyze-and-test:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: keep CI on the same image as release.yml.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Pinned to the toolchain the repo is developed against (Dart 3.12.x).
       # Bump together with local Flutter upgrades, here and in release.yml.
       - uses: subosito/flutter-action@v2
