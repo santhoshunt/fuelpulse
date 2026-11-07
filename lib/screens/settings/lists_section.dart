@@ -3,7 +3,7 @@ import '../../utils/constants.dart';
 import '../../utils/fuel_type_manager.dart' as ftm;
 import '../../utils/pump_brand_manager.dart' as pbm;
 import '../../widgets/add_fuel_type_dialog.dart';
-import '../../widgets/brand_badge.dart';
+import '../../widgets/brand_logo.dart';
 import 'settings_widgets.dart';
 
 /// Fuel Types and Pump Brands: the two shared name lists offered in the
@@ -156,7 +156,7 @@ class _ListsSectionState extends State<ListsSection> {
           onRename: _renamePumpBrand,
           onDelete: _deletePumpBrand,
           leadingBuilder: (name) =>
-              BrandBadge(brandName: name, showLabel: false, size: 22),
+              BrandLogo(brandName: name, size: 28),
         ),
       ],
     );

@@ -5,7 +5,7 @@ import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/trend_calculator.dart';
-import '../widgets/brand_badge.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/rank_tile.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/trend_chart.dart';
@@ -316,8 +316,7 @@ class _StatsScreenState extends State<StatsScreen> {
               return RankTile(
                 rank: idx + 1,
                 label: brand.brand,
-                leading: BrandBadge(
-                    brandName: brand.brand, showLabel: true, size: 28),
+                leading: BrandLogo(brandName: brand.brand, size: 30),
                 fillCount: brand.fillCount,
                 totalLiters: brand.totalLiters,
                 efficiency: brand.weightedEfficiency,

@@ -12,7 +12,7 @@ import '../utils/cost_calculator.dart';
 import '../utils/fuel_type_manager.dart';
 import '../utils/pump_brand_manager.dart';
 import '../widgets/add_fuel_type_dialog.dart';
-import '../widgets/brand_badge.dart';
+import '../widgets/brand_logo.dart';
 import '../widgets/mode_switch.dart';
 import '../widgets/option_picker.dart';
 
@@ -463,7 +463,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           .map((b) => PickerOption(
                 value: b,
                 label: b,
-                leading: BrandBadge(brandName: b, showLabel: false, size: 24),
+                leading: BrandLogo(brandName: b, size: 28),
               ))
           .toList(),
       selected: _selectedBrand,
@@ -793,10 +793,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 onTap: _pickBrand,
                 child: Row(
                   children: [
-                    BrandBadge(
-                        brandName: _selectedBrand,
-                        showLabel: false,
-                        size: 22),
+                    BrandLogo(brandName: _selectedBrand, size: 26),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

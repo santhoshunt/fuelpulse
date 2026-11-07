@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/fuel_log.dart';
 import '../utils/constants.dart';
 import '../utils/efficiency_calculator.dart';
-import 'brand_badge.dart';
+import 'brand_logo.dart';
 import 'glossy_card.dart';
 
 /// Single log row/card in the home list.
@@ -58,7 +58,18 @@ class FuelLogTile extends StatelessWidget {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              BrandBadge(brandName: log.pumpBrand, size: 26),
+                              BrandLogo(brandName: log.pumpBrand, size: 26),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  log.pumpBrand.isEmpty
+                                      ? 'Unknown'
+                                      : log.pumpBrand,
+                                  style: const TextStyle(
+                                      color: kTextPrimary, fontSize: 13),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                               const SizedBox(width: 10),
                               _fullPartialTag(),
                               if (log.fuelType != kDefaultFuelType) ...[

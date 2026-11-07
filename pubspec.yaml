@@ -43,3 +43,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # Brand logos for the six known pump brands. Indian Oil, Bharat
+    # Petroleum and HP are public-domain files from Wikimedia Commons; the
+    # others identify the brand only.
+    - assets/brand_logos/

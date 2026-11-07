@@ -84,8 +84,13 @@ class AppColors extends ThemeExtension<AppColors> {
     );
   }
 
-  static AppColors of(BuildContext context) =>
-      Theme.of(context).extension<AppColors>()!;
+  /// The app's colours, or the default palette's when the surrounding theme
+  /// wasn't built by `buildAppTheme` (a bare MaterialApp in a test).
+  static AppColors of(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.extension<AppColors>() ??
+        AppColors.from(paletteById(null), theme.brightness);
+  }
 
   @override
   AppColors copyWith({
