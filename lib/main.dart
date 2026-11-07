@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'screens/home_screen.dart';
+import 'screens/app_shell.dart';
 import 'theme/app_theme.dart';
 import 'utils/appearance_prefs.dart';
 import 'utils/vehicle_manager.dart';
@@ -48,7 +48,7 @@ class FuelPulseApp extends StatelessWidget {
         theme: buildAppTheme(a.palette, Brightness.light),
         darkTheme: buildAppTheme(a.palette, Brightness.dark),
         themeMode: a.mode,
-        home: const HomeScreen(),
+        home: const AppShell(),
       ),
     );
   }

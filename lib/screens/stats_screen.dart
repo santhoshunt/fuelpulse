@@ -67,10 +67,6 @@ class _StatsScreenState extends State<StatsScreen> {
       appBar: AppBar(
         title: Text('Statistics · ${widget.vehicle.name}',
             overflow: TextOverflow.ellipsis),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
