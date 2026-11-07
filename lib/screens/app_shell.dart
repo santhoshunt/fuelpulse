@@ -11,7 +11,7 @@ import '../services/update_service.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/update_banner.dart';
 import 'dashboard_screen.dart';
-import 'home_screen.dart';
+import 'fuel_list_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
 
@@ -163,12 +163,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               index: _tab,
               children: [
                 DashboardScreen(reload: _reload),
-                // Interim hosts until the Fuel and Analytics tabs get
-                // their own screens: rebuilt on reload to read again.
-                ValueListenableBuilder<int>(
-                  valueListenable: _reload,
-                  builder: (_, r, _) => HomeScreen(key: ValueKey('fuel$r')),
-                ),
+                FuelListScreen(reload: _reload),
+                // Interim host until Analytics gets its own screen:
+                // rebuilt on reload to read again.
                 vehicle == null
                     ? const Center(child: CircularProgressIndicator())
                     : ValueListenableBuilder<int>(

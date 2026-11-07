@@ -8,7 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
-import 'package:fuelpulse/screens/home_screen.dart';
+import 'package:fuelpulse/screens/fuel_list_screen.dart';
 import 'package:fuelpulse/screens/stats_screen.dart';
 import 'package:fuelpulse/utils/constants.dart';
 import 'package:fuelpulse/widgets/trend_chart.dart';
@@ -229,17 +229,17 @@ void main() {
     });
   });
 
-  group('HomeScreen', () {
+  group('FuelListScreen', () {
     testWidgets('lists fill-ups and opens the add form', (tester) async {
       await _seed(tester, [
         _log('a', '2026-06-01', 10000, 30, brand: 'HP'),
         _log('b', '2026-06-15', 10500, 25, brand: 'Indian Oil'),
       ]);
       await _pumpScreen(tester,
-          const HomeScreen());
+          FuelListScreen(reload: ValueNotifier(0)));
 
       expect(find.text('Indian Oil'), findsWidgets);
-      await tester.tap(find.byType(FloatingActionButton));
+      await tester.tap(find.byTooltip('Add refill'));
       await _settle(tester);
       expect(find.text('Add Fill-up · My vehicle'), findsOneWidget);
     });
@@ -269,10 +269,10 @@ void main() {
       });
     }
 
-    testWidgets('the chip switches Home to another vehicle', (tester) async {
+    testWidgets('the vehicle name switches Fuel to another vehicle', (tester) async {
       await seedTwoVehicles(tester);
       await _pumpScreen(tester,
-          const HomeScreen());
+          FuelListScreen(reload: ValueNotifier(0)));
 
       expect(find.text(kDefaultVehicleName), findsOneWidget);
       expect(find.text('HP'), findsWidgets);
@@ -295,9 +295,9 @@ void main() {
       await seedTwoVehicles(tester);
       SharedPreferences.setMockInitialValues({kActiveVehicleKey: 'bike'});
       await _pumpScreen(tester,
-          const HomeScreen());
+          FuelListScreen(reload: ValueNotifier(0)));
 
-      await tester.tap(find.byType(FloatingActionButton));
+      await tester.tap(find.byTooltip('Add refill'));
       await _settle(tester);
       expect(find.text('Add Fill-up · Activa'), findsOneWidget);
     });

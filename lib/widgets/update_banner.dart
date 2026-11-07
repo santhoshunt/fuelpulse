@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../services/update_prefs.dart';
 import '../services/update_service.dart';
-import '../utils/constants.dart';
-import 'glossy_card.dart';
+import '../theme/app_colors.dart';
 import 'update_sheet.dart';
 
-// Ported from the expense tracker's update banner, restyled as a glossy
-// card and reading the "Not now" tag from SharedPreferences.
+// Ported from the expense tracker's update banner, restyled as a card and
+// reading the "Not now" tag from SharedPreferences.
 
 /// Home's "Update available" card: shown when the launch check (or
 /// Settings) found a newer release and the newest one wasn't answered with
@@ -51,11 +50,14 @@ class _UpdateBannerState extends State<UpdateBanner> {
         }
         final newest = updates.newer.first.tag;
         if (newest == _dismissed) return const SizedBox.shrink();
-        final accent = Theme.of(context).colorScheme.primary;
+        final colors = AppColors.of(context);
+        final accent = colors.primary;
         final n = updates.newer.length;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: GlossyCard(
+          child: Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -67,8 +69,8 @@ class _UpdateBannerState extends State<UpdateBanner> {
                     Expanded(
                       child: Text(
                         'Update available: $newest',
-                        style: const TextStyle(
-                          color: kTextPrimary,
+                        style: TextStyle(
+                          color: colors.textPrimary,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -81,7 +83,7 @@ class _UpdateBannerState extends State<UpdateBanner> {
                   n == 1
                       ? 'A newer version is on GitHub.'
                       : '$n newer versions on GitHub.',
-                  style: const TextStyle(color: kTextSecondary, fontSize: 13),
+                  style: TextStyle(color: colors.textSecondary, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -99,6 +101,7 @@ class _UpdateBannerState extends State<UpdateBanner> {
                   ],
                 ),
               ],
+            ),
             ),
           ),
         );

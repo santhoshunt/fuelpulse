@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../utils/constants.dart';
-import 'glossy_card.dart';
+import '../theme/app_colors.dart';
+import '../utils/mileage_bands.dart';
 
 /// Single row in a ranking list (brands, fuel types).
 class RankTile extends StatelessWidget {
@@ -33,15 +33,18 @@ class RankTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final colors = AppColors.of(context);
+    final accent = colors.primary;
+    final brightness = Theme.of(context).brightness;
+    final deltaColor = bandColor(deltaVsOverall >= 0 ? 4 : 0, brightness);
     final barFraction =
         bestEfficiency > 0 ? (efficiency / bestEfficiency).clamp(0.0, 1.0) : 0.0;
     final isPositive = deltaVsOverall >= 0;
 
-    return GlossyCard(
+    return Card(
       margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
       padding: const EdgeInsets.all(14),
-      borderRadius: 14,
       child: Column(
         children: [
           Row(
@@ -66,8 +69,8 @@ class RankTile extends StatelessWidget {
                   child: leading ??
                       Text(
                         label,
-                        style: const TextStyle(
-                            color: kTextPrimary, fontSize: 13),
+                        style: TextStyle(
+                            color: colors.textPrimary, fontSize: 13),
                         overflow: TextOverflow.ellipsis,
                       ),
                 ),
@@ -76,18 +79,13 @@ class RankTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: (isPositive
-                          ? const Color(0xFF22C55E)
-                          : const Color(0xFFEF4444))
-                      .withValues(alpha: 0.15),
+                  color: deltaColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   '${isPositive ? '▲' : '▼'} ${deltaVsOverall.abs().toStringAsFixed(1)}',
                   style: TextStyle(
-                    color: isPositive
-                        ? const Color(0xFF22C55E)
-                        : const Color(0xFFEF4444),
+                    color: deltaColor,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -97,8 +95,8 @@ class RankTile extends StatelessWidget {
               // km/L value
               Text(
                 '${efficiency.toStringAsFixed(1)} km/L',
-                style: const TextStyle(
-                  color: kTextPrimary,
+                style: TextStyle(
+                  color: colors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
                 ),
@@ -117,7 +115,7 @@ class RankTile extends StatelessWidget {
                     children: [
                       Container(
                         width: constraints.maxWidth,
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: colors.cardBorder,
                       ),
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 500),
@@ -139,19 +137,19 @@ class RankTile extends StatelessWidget {
             children: [
               Text(
                 '$fillCount fills',
-                style: const TextStyle(color: kTextMuted, fontSize: 12),
+                style: TextStyle(color: colors.textSecondary, fontSize: 12),
               ),
               const SizedBox(width: 16),
               Text(
                 '${totalLiters.toStringAsFixed(1)} L total',
-                style: const TextStyle(color: kTextMuted, fontSize: 12),
+                style: TextStyle(color: colors.textSecondary, fontSize: 12),
               ),
               for (final detail in extraDetails) ...[
                 const SizedBox(width: 16),
                 Flexible(
                   child: Text(
                     detail,
-                    style: const TextStyle(color: kTextMuted, fontSize: 12),
+                    style: TextStyle(color: colors.textSecondary, fontSize: 12),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -159,6 +157,7 @@ class RankTile extends StatelessWidget {
             ],
           ),
         ],
+      ),
       ),
     );
   }

@@ -19,7 +19,7 @@ import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/screens/entry_form_screen.dart';
-import 'package:fuelpulse/screens/home_screen.dart';
+import 'package:fuelpulse/screens/fuel_list_screen.dart';
 import 'package:fuelpulse/screens/stats_screen.dart';
 import 'package:fuelpulse/theme/app_theme.dart';
 import 'package:fuelpulse/theme/palettes.dart';
@@ -168,7 +168,7 @@ void main() {
   testWidgets('home', (tester) async {
     await capture(
       tester,
-      const HomeScreen(),
+      FuelListScreen(reload: ValueNotifier(0)),
       'home',
     );
   });
@@ -176,7 +176,7 @@ void main() {
   testWidgets('vehicle picker', (tester) async {
     await capture(
       tester,
-      const HomeScreen(),
+      FuelListScreen(reload: ValueNotifier(0)),
       'vehicles',
       before: () async {
         await tester.tap(find.text('Swift'));

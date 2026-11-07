@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
-import 'glossy_card.dart';
 
 /// Single stat card with label + prominent value + optional subtitle.
 class StatCard extends StatelessWidget {
@@ -25,10 +24,10 @@ class StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
 
-    return GlossyCard(
+    return Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
           padding: const EdgeInsets.all(16),
-          borderRadius: 18,
-          glowColor: borderColor,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -80,6 +79,7 @@ class StatCard extends StatelessWidget {
                 ),
               ],
             ],
+          ),
           ),
     );
   }

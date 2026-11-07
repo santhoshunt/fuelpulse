@@ -93,7 +93,7 @@ bool shouldCheckForUpdate({
 }
 
 /// Update check against the app's GitHub releases. Settings calls it on
-/// demand; HomeScreen runs it once a day when that is switched on.
+/// demand; AppShell runs it once a day when that is switched on.
 class UpdateService {
   static const repo = 'santhoshunt/fuelpulse';
 
