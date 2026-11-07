@@ -8,7 +8,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
-import 'package:fuelpulse/models/theme_preference.dart';
 import 'package:fuelpulse/screens/home_screen.dart';
 import 'package:fuelpulse/screens/stats_screen.dart';
 import 'package:fuelpulse/utils/constants.dart';
@@ -237,7 +236,7 @@ void main() {
         _log('b', '2026-06-15', 10500, 25, brand: 'Indian Oil'),
       ]);
       await _pumpScreen(tester,
-          HomeScreen(theme: ThemePreference.defaults, onThemeChanged: (_) {}));
+          const HomeScreen());
 
       expect(find.text('Indian Oil'), findsWidgets);
       await tester.tap(find.byType(FloatingActionButton));
@@ -273,7 +272,7 @@ void main() {
     testWidgets('the chip switches Home to another vehicle', (tester) async {
       await seedTwoVehicles(tester);
       await _pumpScreen(tester,
-          HomeScreen(theme: ThemePreference.defaults, onThemeChanged: (_) {}));
+          const HomeScreen());
 
       expect(find.text(kDefaultVehicleName), findsOneWidget);
       expect(find.text('HP'), findsWidgets);
@@ -296,7 +295,7 @@ void main() {
       await seedTwoVehicles(tester);
       SharedPreferences.setMockInitialValues({kActiveVehicleKey: 'bike'});
       await _pumpScreen(tester,
-          HomeScreen(theme: ThemePreference.defaults, onThemeChanged: (_) {}));
+          const HomeScreen());
 
       await tester.tap(find.byType(FloatingActionButton));
       await _settle(tester);

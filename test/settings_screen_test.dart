@@ -8,7 +8,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
-import 'package:fuelpulse/models/theme_preference.dart';
 import 'package:fuelpulse/screens/settings_screen.dart';
 import 'package:fuelpulse/utils/fuel_type_manager.dart' as ftm;
 import 'package:fuelpulse/utils/pump_brand_manager.dart' as pbm;
@@ -31,10 +30,7 @@ Future<void> _pumpSettings(WidgetTester tester) async {
   tester.view.devicePixelRatio = 2.625;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
-    home: SettingsScreen(
-      currentTheme: ThemePreference.defaults,
-      onThemeChanged: (_) {},
-    ),
+    home: const SettingsScreen(),
   ));
   await _settle(tester);
 }
@@ -81,7 +77,6 @@ void main() {
       'Fuel Types',
       'Pump Brands',
       'Data Management',
-      'Theme Color',
       'About',
       'Danger Zone',
     ]) {

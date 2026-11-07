@@ -1,12 +1,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'models/theme_preference.dart';
 import 'screens/home_screen.dart';
+import 'theme/app_theme.dart';
+import 'utils/appearance_prefs.dart';
 import 'utils/vehicle_manager.dart';
-import 'utils/theme_manager.dart' as tm;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,62 +25,30 @@ Future<void> main() async {
     debugPrint('Tank capacity migration failed: $e');
   }
 
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF080808),
-  ));
+  // Loaded before the first frame so the app never flashes the wrong theme.
+  try {
+    await reloadAppearance();
+  } catch (e) {
+    debugPrint('Appearance load failed: $e');
+  }
+
   runApp(const FuelPulseApp());
 }
 
-class FuelPulseApp extends StatefulWidget {
+class FuelPulseApp extends StatelessWidget {
   const FuelPulseApp({super.key});
 
   @override
-  State<FuelPulseApp> createState() => _FuelPulseAppState();
-}
-
-class _FuelPulseAppState extends State<FuelPulseApp> {
-  ThemePreference _theme = ThemePreference.defaults;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadTheme();
-  }
-
-  Future<void> _loadTheme() async {
-    final theme = await tm.loadTheme();
-    setState(() {
-      _theme = theme;
-      _loaded = true;
-    });
-  }
-
-  void _onThemeChanged(ThemePreference theme) {
-    setState(() => _theme = theme);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!_loaded) {
-      return MaterialApp(
+    return ValueListenableBuilder<Appearance>(
+      valueListenable: appearance,
+      builder: (context, a, _) => MaterialApp(
+        title: 'FuelPulse',
         debugShowCheckedModeBanner: false,
-        theme: tm.buildThemeData(ThemePreference.defaults),
-        home: const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
-      );
-    }
-
-    return MaterialApp(
-      title: 'FuelPulse',
-      debugShowCheckedModeBanner: false,
-      theme: tm.buildThemeData(_theme),
-      home: HomeScreen(
-        theme: _theme,
-        onThemeChanged: _onThemeChanged,
+        theme: buildAppTheme(a.palette, Brightness.light),
+        darkTheme: buildAppTheme(a.palette, Brightness.dark),
+        themeMode: a.mode,
+        home: const HomeScreen(),
       ),
     );
   }

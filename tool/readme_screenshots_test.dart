@@ -18,11 +18,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
-import 'package:fuelpulse/models/theme_preference.dart';
 import 'package:fuelpulse/screens/entry_form_screen.dart';
 import 'package:fuelpulse/screens/home_screen.dart';
 import 'package:fuelpulse/screens/stats_screen.dart';
-import 'package:fuelpulse/utils/theme_manager.dart' as tm;
+import 'package:fuelpulse/theme/app_theme.dart';
+import 'package:fuelpulse/theme/palettes.dart';
 
 FuelLog _log(
   int n,
@@ -112,7 +112,7 @@ void main() {
     await _loadFont('MaterialIcons', [join(fonts, 'materialicons-regular.otf')]);
     await _loadFont('Segoe UI Emoji', [r'C:\Windows\Fonts\seguiemj.ttf']);
 
-    final base = tm.buildThemeData(ThemePreference.defaults);
+    final base = buildAppTheme(paletteById(kDefaultPaletteId), Brightness.dark);
     theme = base.copyWith(
       textTheme: base.textTheme.apply(
           fontFamily: 'Roboto', fontFamilyFallback: ['Segoe UI Emoji']),
@@ -168,7 +168,7 @@ void main() {
   testWidgets('home', (tester) async {
     await capture(
       tester,
-      HomeScreen(theme: ThemePreference.defaults, onThemeChanged: (_) {}),
+      const HomeScreen(),
       'home',
     );
   });
@@ -176,7 +176,7 @@ void main() {
   testWidgets('vehicle picker', (tester) async {
     await capture(
       tester,
-      HomeScreen(theme: ThemePreference.defaults, onThemeChanged: (_) {}),
+      const HomeScreen(),
       'vehicles',
       before: () async {
         await tester.tap(find.text('Swift'));

@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
 import '../models/vehicle.dart';
+import '../theme/palettes.dart';
+import '../utils/appearance_prefs.dart';
 import '../utils/constants.dart';
 import '../utils/fuel_type_manager.dart';
 import '../utils/pump_brand_manager.dart';
@@ -35,8 +37,10 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     'pumpBrands': pumpBrands,
     'settings': {
       'activeVehicleId': prefs.getString(kActiveVehicleKey),
-      'themeAccent': prefs.getString(kThemeAccentKey),
-      'themeLight': prefs.getString(kThemeLightKey),
+      // From v2.2.0. Older files carry themeAccent and themeLight instead,
+      // which restore ignores: those colours have no palette.
+      'paletteId': prefs.getString(kPaletteIdKey),
+      'themeMode': prefs.getString(kThemeModeKey),
     },
   };
 }
@@ -122,11 +126,14 @@ Future<int> restoreBackup(Map<String, dynamic> data,
       } else {
         await prefs.remove(kActiveVehicleKey);
       }
-      final accent = settings['themeAccent'];
-      final light = settings['themeLight'];
-      if (accent is String && light is String) {
-        await prefs.setString(kThemeAccentKey, accent);
-        await prefs.setString(kThemeLightKey, light);
+      final palette = settings['paletteId'];
+      final mode = settings['themeMode'];
+      if (palette is String || mode is String) {
+        final now = await loadAppearance();
+        await saveAppearance(now.copyWith(
+          paletteId: palette is String ? paletteById(palette).id : null,
+          mode: mode is String ? themeModeFromName(mode) : null,
+        ));
       }
     } else {
       await prefs.remove(kActiveVehicleKey);

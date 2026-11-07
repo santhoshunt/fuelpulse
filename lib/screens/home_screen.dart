@@ -23,18 +23,10 @@ import '../widgets/vehicle_picker.dart';
 import 'entry_form_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
-import '../models/theme_preference.dart';
 import '../models/vehicle.dart';
 
 class HomeScreen extends StatefulWidget {
-  final ThemePreference theme;
-  final ValueChanged<ThemePreference> onThemeChanged;
-
-  const HomeScreen({
-    super.key,
-    required this.theme,
-    required this.onThemeChanged,
-  });
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -448,12 +440,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _goToSettings() {
     Navigator.push(
       context,
-      SmoothPageRoute(
-        page: SettingsScreen(
-          currentTheme: widget.theme,
-          onThemeChanged: widget.onThemeChanged,
-        ),
-      ),
+      SmoothPageRoute(page: const SettingsScreen()),
     ).then((_) => _loadData());
   }
 }
