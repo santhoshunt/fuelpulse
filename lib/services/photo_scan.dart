@@ -32,8 +32,10 @@ class OdometerRead {
   bool get isTrip => label?.startsWith('TRIP') ?? false;
 }
 
-/// What the pump photo gave. The three values are null unless they agree:
-/// litres × rate must come within about ₹1 of the amount.
+/// What the pump photo gave. Amount and litres are null unless all three
+/// agree: litres × rate must come within about ₹1 of the amount. When they
+/// can't be checked, [rate] alone may still be set, because a pump rate is
+/// the one number narrow enough ([kMinRate] to [kMaxRate]) to trust unchecked.
 class PumpRead {
   final double? amount;
   final double? litres;
@@ -41,11 +43,106 @@ class PumpRead {
   final double? error;
   final List<double> numbers;
 
-  const PumpRead(
-      {this.amount, this.litres, this.rate, this.error, this.numbers = const []});
+  /// Digits changed to make litres × rate match the amount; 0 when all three
+  /// were read as they are.
+  final int corrections;
+
+  const PumpRead({
+    this.amount,
+    this.litres,
+    this.rate,
+    this.error,
+    this.numbers = const [],
+    this.corrections = 0,
+  });
 
   bool get found => amount != null;
+
+  /// Only the rate could be read; litres and amount were missing or didn't
+  /// agree with it.
+  bool get rateOnly => amount == null && rate != null;
 }
+
+/// Plausible pump rates in ₹ a litre. Premium petrol (XP100, Speed 100,
+/// Power 100) reached ₹167 in 2026; pump density readings (700 to 800
+/// kg/m³) stay above the top, so they can't pass as a rate.
+const kMinRate = 60.0;
+const kMaxRate = 200.0;
+
+/// Digits a seven-segment display is commonly misread as, from real scans:
+/// 127.43 read as 121.43 (7 as 1). A thin 1 can also vanish entirely
+/// (11.38 read as 138), which [_digitVariants] covers by inserting a 1.
+const _segmentMixups = {
+  '1': ['7', '4'],
+  '7': ['1'],
+  '4': ['1'],
+  '5': ['6', '9'],
+  '6': ['5', '8'],
+  '8': ['0', '6', '9', '3'],
+  '0': ['8'],
+  '9': ['8', '5'],
+  '3': ['8'],
+};
+
+/// The digit string as read, with one segment slip swapped, or with one
+/// missing 1 put back. Maps each variant to its number of changes (0 or 1).
+Map<String, int> _digitVariants(String digits) {
+  final out = <String, int>{digits: 0};
+  for (var i = 0; i < digits.length; i++) {
+    for (final r in _segmentMixups[digits[i]] ?? const <String>[]) {
+      out.putIfAbsent(digits.replaceRange(i, i + 1, r), () => 1);
+    }
+  }
+  for (var i = 0; i <= digits.length; i++) {
+    out.putIfAbsent(digits.replaceRange(i, i, '1'), () => 1);
+  }
+  return out;
+}
+
+/// When the amount was read but litres and rate don't agree with it, tries
+/// one segment slip in litres and one in the rate (two-decimal display
+/// values). A pump shows amount = litres × rate rounded to the paisa, so a
+/// pair is accepted only within ₹0.011, far tighter than the plain check.
+/// Fewest changes win, then the smallest error.
+PumpRead? _repairFromAmount(List<String> tokens, List<double> amounts) {
+  final litres = <(double, int, int)>[]; // value, changes, token
+  final rates = <(double, int, int)>[];
+  for (var t = 0; t < tokens.length; t++) {
+    _digitVariants(tokens[t]).forEach((v, changes) {
+      final x = int.parse(v) / 100;
+      if (x >= 0.5 && x <= 80) litres.add((x, changes, t));
+      if (x >= kMinRate && x <= kMaxRate) rates.add((x, changes, t));
+    });
+  }
+  (double, double, double, int, double)? best;
+  for (final a in amounts.where((a) => a >= 10)) {
+    for (final l in litres) {
+      for (final r in rates) {
+        if (l.$3 == r.$3) continue; // one display, one value
+        final changes = l.$2 + r.$2;
+        if (changes == 0) continue; // the plain check already looked
+        final err = (l.$1 * r.$1 - a).abs();
+        if (err > 0.011) continue;
+        if (best == null ||
+            changes < best.$4 ||
+            (changes == best.$4 && err < best.$5)) {
+          best = (a, l.$1, r.$1, changes, err);
+        }
+      }
+    }
+  }
+  if (best == null) return null;
+  return PumpRead(
+    amount: best.$1,
+    litres: best.$2,
+    rate: best.$3,
+    error: best.$5,
+    corrections: best.$4,
+  );
+}
+
+final _rateLabel = RegExp(r'rate|rs\s*/\s*l|₹\s*/\s*l|price|/\s*lit',
+    caseSensitive: false);
 
 final _labelPattern =
     RegExp(r'\b(TOTAL|ODO|TRIP\s*[AB12])\b', caseSensitive: false);
@@ -126,16 +223,36 @@ OdometerRead parseOdometer(List<ScanLine> lines, {int? lastOdometer}) {
 
 /// Finds amount, litres and rate that agree: litres × rate ≈ amount.
 /// A number whose decimal point was missed (85554) is also tried as /100.
+/// Without an agreeing set it falls back to the rate alone, see [PumpRead].
 PumpRead parsePump(List<ScanLine> lines) {
   final nums = <double>{};
+  final where = <double, ScanLine>{};
+  final tokens = <String>{}; // digit runs without their point, for repairs
   for (final l in lines) {
+    // ML Kit splits one display into words ("1450. 15") and merges two
+    // displays into one line ("164 16 135" is density 764.1 and rate 167.35),
+    // so every run of up to three neighbouring words is a candidate.
+    final words = normalizeDigits(l.text)
+        .split(RegExp(r'\s+'))
+        .map((w) => w.replaceAll(RegExp(r'[^\d]'), ''))
+        .toList();
+    for (var i = 0; i < words.length; i++) {
+      for (var j = i; j < words.length && j < i + 3; j++) {
+        final digits = words.sublist(i, j + 1).join();
+        if (digits.length >= 2) tokens.add(digits);
+      }
+    }
     final t = normalizeDigits(l.text).replaceAll(',', '.').replaceAll(' ', '');
     for (final m in RegExp(r'\d+(\.\d+)?').allMatches(t)) {
       final s = m.group(0)!;
       final v = double.parse(s);
       if (v <= 0) continue;
       nums.add(v);
-      if (!s.contains('.') && s.length >= 3) nums.add(v / 100);
+      where.putIfAbsent(v, () => l);
+      if (!s.contains('.') && s.length >= 3) {
+        nums.add(v / 100);
+        where.putIfAbsent(v / 100, () => l);
+      }
     }
   }
   final list = nums.toList();
@@ -145,7 +262,7 @@ PumpRead parsePump(List<ScanLine> lines) {
     for (final l in list) {
       for (final r in list) {
         if (a == l || a == r || l == r) continue;
-        if (r < 60 || r > 160) continue; // plausible petrol rate, ₹/L
+        if (r < kMinRate || r > kMaxRate) continue;
         if (l > 80) continue; // plausible litres for one fill
         final err = (l * r - a).abs();
         if (err <= max(1.0, a * 0.005) && err < bestErr) {
@@ -155,7 +272,20 @@ PumpRead parsePump(List<ScanLine> lines) {
       }
     }
   }
-  if (best == null) return PumpRead(numbers: list);
+  if (best == null) {
+    final repaired = _repairFromAmount(tokens.toList(), list);
+    if (repaired != null) {
+      return PumpRead(
+        amount: repaired.amount,
+        litres: repaired.litres,
+        rate: repaired.rate,
+        error: repaired.error,
+        corrections: repaired.corrections,
+        numbers: list,
+      );
+    }
+    return PumpRead(rate: _rateAlone(list, where, lines), numbers: list);
+  }
   return PumpRead(
     amount: best.$1,
     litres: best.$2,
@@ -163,6 +293,23 @@ PumpRead parsePump(List<ScanLine> lines) {
     error: bestErr,
     numbers: list,
   );
+}
+
+/// The single number in the rate range. With several, the one nearest
+/// a rate label (Rate, Rs/Lit, ₹/L, Price) wins; with several and no label,
+/// none is trusted.
+double? _rateAlone(
+    List<double> nums, Map<double, ScanLine> where, List<ScanLine> lines) {
+  final rates = nums.where((v) => v >= kMinRate && v <= kMaxRate).toList();
+  if (rates.length == 1) return rates.first;
+  if (rates.isEmpty) return null;
+  final label = lines.where((l) => _rateLabel.hasMatch(l.text)).firstOrNull;
+  if (label == null) return null;
+  final c = label.box.center;
+  rates.sort((a, b) => (where[a]!.box.center - c)
+      .distance
+      .compareTo((where[b]!.box.center - c).distance));
+  return rates.first;
 }
 
 /// One scan: the photo, the raw text and what the parser made of it.
@@ -202,7 +349,13 @@ class ScanResult {
       return 'Odometer: ${o.value} km ($how)';
     }
     final p = pump!;
+    if (p.rateOnly) return 'Pump: only the rate was read, ₹${p.rate}/L';
     if (!p.found) return "Pump: numbers didn't agree";
+    if (p.corrections > 0) {
+      return 'Pump: ₹${p.amount} · ${p.litres} L · ₹${p.rate}/L '
+          '(${p.corrections} ${p.corrections == 1 ? 'digit' : 'digits'} '
+          'corrected, check them)';
+    }
     return 'Pump: ₹${p.amount} · ${p.litres} L · ₹${p.rate}/L';
   }
 
@@ -223,7 +376,8 @@ class ScanResult {
           'last odometer: ${lastOdometer ?? 'none'}');
     }
     if (pump != null) {
-      b.writeln('Pump numbers seen: ${pump!.numbers}'
+      b.writeln('Pump numbers seen: ${pump!.numbers}; '
+          'digits corrected: ${pump!.corrections}'
           '${pump!.error == null ? '' : '; error ₹${pump!.error!.toStringAsFixed(2)}'}');
     }
     b.writeln('Recognised lines (${lines.length}):');

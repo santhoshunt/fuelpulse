@@ -247,6 +247,13 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       return null;
     }
     final p = r.pump!;
+    if (p.rateOnly) {
+      // Through the normal listener, so a litres value already typed
+      // recomputes the total.
+      _priceController.text = p.rate!.toStringAsFixed(2);
+      return 'Only the rate was read: ₹${p.rate!.toStringAsFixed(2)}/L. '
+          'Enter litres or the total and the other fills in.';
+    }
     if (!p.found) {
       return "The pump numbers didn't agree, so nothing was filled. "
           'Tap Report to send the details.';
@@ -259,6 +266,11 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     _syncingCost = false;
     _lastCostEdited = 'total';
     _fuelFromPhoto = true;
+    if (p.corrections > 0) {
+      return 'Fixed ${p.corrections} misread '
+          '${p.corrections == 1 ? 'digit' : 'digits'} so litres × rate '
+          'matches the amount. Check them against the pump before saving.';
+    }
     return null;
   }
 
@@ -348,7 +360,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
 
   bool _scanFilled(ScanResult s) => s.kind == ScanKind.odometer
       ? s.odometer!.value != null
-      : s.pump!.found;
+      : s.pump!.found || s.pump!.rateOnly;
 
   void _onPriceChanged() {
     if (_syncingCost) return;
