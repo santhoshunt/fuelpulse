@@ -1,7 +1,7 @@
 name: fuelpulse
 description: "FuelPulse — Offline fuel fill-up tracker with km/L efficiency and brand comparison."
 publish_to: 'none'
-version: 2.1.1+7
+version: 2.1.2+8
 
 environment:
   sdk: ^3.11.0
