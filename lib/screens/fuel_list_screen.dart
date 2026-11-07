@@ -13,6 +13,7 @@ import '../utils/vehicle_manager.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/vehicle_picker.dart';
 import 'entry_form_screen.dart';
+import 'refill_detail_screen.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
@@ -279,7 +280,7 @@ class _FuelListScreenState extends State<FuelListScreen> {
       confirmDismiss: (_) => _confirmDelete(log),
       onDismissed: (_) => _delete(log),
       child: InkWell(
-        onTap: () => _open(EntryFormScreen(logId: log.id)),
+        onTap: () => _open(RefillDetailScreen(logId: log.id)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
