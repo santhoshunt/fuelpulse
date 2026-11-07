@@ -39,6 +39,19 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color danger;
   final Color warning;
 
+  // The gauge card and its odometer are dark in both modes, so their ink
+  // does not follow the theme.
+  static const gaugeInk = Color(0xFFF4F1EC);
+  static const gaugeInkSoft = Color(0xFFDCE6F5);
+  static const gaugeMinorTick = Color(0xFF9FB3D1);
+  static const gaugeNeedle = Color(0xFFE5484D);
+  static const gaugeHub = Color(0xFF111111);
+  static const lcdBackground = Color(0xFF0B0C0D);
+  static const lcdBorder = Color(0xFF3B3B40);
+  static const lcdLit = Color(0xFFEEF4F6);
+  static const lcdUnlit = Color(0xFF222428);
+  static const lcdUnit = Color(0xFF9AA0A6);
+
   const AppColors({
     required this.page,
     required this.card,
