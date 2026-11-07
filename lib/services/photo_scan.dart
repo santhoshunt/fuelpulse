@@ -50,10 +50,33 @@ class PumpRead {
 final _labelPattern =
     RegExp(r'\b(TOTAL|ODO|TRIP\s*[AB12])\b', caseSensitive: false);
 
+/// Letters that segment and stylised digits are misread as, e.g. the 1 in a
+/// real odometer read as "5 i98".
+const _lookalikeDigits = {
+  'O': '0', 'o': '0', 'D': '0', 'Q': '0',
+  'I': '1', 'i': '1', 'l': '1', '|': '1', '!': '1',
+  'Z': '2', 'z': '2',
+  'S': '5', 's': '5',
+  'G': '6', 'b': '6',
+  'B': '8',
+  'g': '9', 'q': '9',
+};
+
+/// Maps look-alike letters to digits, but only inside words that already
+/// hold a digit, so labels such as TOTAL, OFF or km stay as they are.
+String normalizeDigits(String text) => text.split(' ').map((word) {
+      if (!word.contains(RegExp(r'\d'))) return word;
+      return word.split('').map((c) => _lookalikeDigits[c] ?? c).join();
+    }).join(' ');
+
 /// Picks the reading nearest a TOTAL / ODO / TRIP label. Lines with a colon
 /// (the clock) and single digits (the gear) are skipped. Without a label it
 /// falls back to the tallest number, which is usually the main reading.
-OdometerRead parseOdometer(List<ScanLine> lines) {
+///
+/// With [lastOdometer] known, readings that make sense win over closer ones:
+/// a TOTAL between the last reading and 5,000 km past it, or a TRIP of at
+/// most 5,000 km. Speedometer dial numbers rarely pass that test.
+OdometerRead parseOdometer(List<ScanLine> lines, {int? lastOdometer}) {
   ScanLine? labelLine;
   String? label;
   for (final l in lines) {
@@ -68,7 +91,8 @@ OdometerRead parseOdometer(List<ScanLine> lines) {
   final found = <(int, ScanLine)>[];
   for (final l in lines) {
     if (l.text.contains(':')) continue;
-    final digitsOnly = l.text.replaceAll(RegExp(r'[\s,.]'), '');
+    final digitsOnly =
+        normalizeDigits(l.text).replaceAll(RegExp(r'[\s,.]'), '');
     for (final m in RegExp(r'\d{2,7}').allMatches(digitsOnly)) {
       found.add((int.parse(m.group(0)!), l));
     }
@@ -83,10 +107,20 @@ OdometerRead parseOdometer(List<ScanLine> lines) {
   } else {
     found.sort((a, b) => b.$2.box.height.compareTo(a.$2.box.height));
   }
+  final isTrip = label?.startsWith('TRIP') ?? false;
+  bool plausible(int v) => isTrip
+      ? v <= 5000
+      : lastOdometer == null || (v >= lastOdometer && v <= lastOdometer + 5000);
+  // Keeps the distance order inside each group.
+  final good = found.where((f) => plausible(f.$1)).toList();
+  final ordered = [...good, ...found.where((f) => !plausible(f.$1))];
+  // When a range applies and nothing fits it, fill nothing rather than a
+  // dial number or a reading that lost a digit.
+  final checked = isTrip || lastOdometer != null;
   return OdometerRead(
-    value: found.first.$1,
+    value: checked && good.isEmpty ? null : ordered.first.$1,
     label: label,
-    candidates: found.map((f) => f.$1).toList(),
+    candidates: ordered.map((f) => f.$1).toList(),
   );
 }
 
@@ -95,7 +129,7 @@ OdometerRead parseOdometer(List<ScanLine> lines) {
 PumpRead parsePump(List<ScanLine> lines) {
   final nums = <double>{};
   for (final l in lines) {
-    final t = l.text.replaceAll(',', '.').replaceAll(' ', '');
+    final t = normalizeDigits(l.text).replaceAll(',', '.').replaceAll(' ', '');
     for (final m in RegExp(r'\d+(\.\d+)?').allMatches(t)) {
       final s = m.group(0)!;
       final v = double.parse(s);
@@ -139,6 +173,9 @@ class ScanResult {
   final int elapsedMs;
   final OdometerRead? odometer;
   final PumpRead? pump;
+
+  /// The reading the odometer was checked against, null when unknown.
+  final int? lastOdometer;
   final DateTime at;
 
   ScanResult({
@@ -148,13 +185,19 @@ class ScanResult {
     required this.elapsedMs,
     this.odometer,
     this.pump,
+    this.lastOdometer,
   }) : at = DateTime.now();
 
   /// One-line outcome for the form.
   String get summary {
     if (kind == ScanKind.odometer) {
       final o = odometer!;
-      if (o.value == null) return 'Odometer: no number found';
+      if (o.value == null) {
+        if (o.candidates.isEmpty) return 'Odometer: no number found';
+        return lastOdometer == null
+            ? 'Odometer: no trip reading under 5,000 km'
+            : 'Odometer: no reading within 5,000 km of $lastOdometer km';
+      }
       final how = o.label == null ? 'no label, check it' : o.label!;
       return 'Odometer: ${o.value} km ($how)';
     }
@@ -176,7 +219,8 @@ class ScanResult {
       ..writeln('Result: $summary');
     if (odometer != null) {
       b.writeln('Odometer label: ${odometer!.label ?? 'none'}; '
-          'candidates: ${odometer!.candidates}');
+          'candidates: ${odometer!.candidates}; '
+          'last odometer: ${lastOdometer ?? 'none'}');
     }
     if (pump != null) {
       b.writeln('Pump numbers seen: ${pump!.numbers}'
@@ -203,7 +247,8 @@ class ScanResult {
 class PhotoScanner {
   final _recognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
-  Future<ScanResult> scan(String path, ScanKind kind) async {
+  Future<ScanResult> scan(String path, ScanKind kind,
+      {int? lastOdometer}) async {
     final sw = Stopwatch()..start();
     final text = await _recognizer.processImage(InputImage.fromFilePath(path));
     sw.stop();
@@ -216,8 +261,11 @@ class PhotoScanner {
       photoPath: path,
       lines: lines,
       elapsedMs: sw.elapsedMilliseconds,
-      odometer: kind == ScanKind.odometer ? parseOdometer(lines) : null,
+      odometer: kind == ScanKind.odometer
+          ? parseOdometer(lines, lastOdometer: lastOdometer)
+          : null,
       pump: kind == ScanKind.pump ? parsePump(lines) : null,
+      lastOdometer: lastOdometer,
     );
   }
 

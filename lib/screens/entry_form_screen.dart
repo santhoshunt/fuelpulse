@@ -206,7 +206,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
 
     setState(() => _scanning = true);
     try {
-      final result = await (_scanner ??= PhotoScanner()).scan(photo.path, kind);
+      final result = await (_scanner ??= PhotoScanner())
+          .scan(photo.path, kind, lastOdometer: _baseOdometer);
       if (!mounted) return;
       String? warning;
       setState(() {
@@ -229,7 +230,9 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   String? _applyScan(ScanResult r) {
     if (r.kind == ScanKind.odometer) {
       final o = r.odometer!;
-      if (o.value == null) return 'No odometer number found. Tap Report to send the details.';
+      if (o.value == null) {
+        return '${r.summary}. Enter it by hand, or tap Report to send the details.';
+      }
       if (o.isTrip) {
         if (_baseOdometer == null) {
           return '${o.label} shows distance since the last fill-up, '
