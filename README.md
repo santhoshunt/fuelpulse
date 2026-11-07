@@ -23,6 +23,7 @@ FuelPulse records every fuel fill-up and works out **real-world mileage** for ea
 | **Segment-based efficiency** | Calculates km/L between consecutive full-tank entries — shows the exact *"X km ÷ Y L"* breakdown |
 | **Brand comparison** | Ranks fuel brands by average efficiency with visual bars and delta indicators |
 | **Fuel types** | Tag each fill-up with a fuel type. Normal is built in, and you can add others such as XP-95. Statistics compares km/L and ₹/km per type |
+| **Photo scan** | Fill a fill-up from photos: the odometer (TOTAL reading, or TRIP as km travelled) and the pump display (amount, litres and rate, kept only when litres × rate matches the amount). Text is read on the phone and nothing is uploaded. A Report button shares what was read, with the photo, when a scan goes wrong |
 | **Cost tracking** | Enter the price per litre or the total paid and the app fills in the other. Statistics shows total spend, average price, cost per km and monthly spend |
 | **Trend charts** | km/L and cost per km for each full-tank segment, plotted over time |
 | **Pump brand management** | Add, rename and remove pump brands. A rename updates every past fill-up |
@@ -60,6 +61,7 @@ flutter test tool/readme_screenshots_test.dart --update-goldens
 - **Preferences:** [shared_preferences](https://pub.dev/packages/shared_preferences)
 - **CSV:** [csv](https://pub.dev/packages/csv) + [share_plus](https://pub.dev/packages/share_plus)
 - **Backup:** [file_picker](https://pub.dev/packages/file_picker) for restore, [google_sign_in](https://pub.dev/packages/google_sign_in) + [googleapis](https://pub.dev/packages/googleapis) for Drive
+- **Photo scan:** [google_mlkit_text_recognition](https://pub.dev/packages/google_mlkit_text_recognition) for on-device text recognition, [image_picker](https://pub.dev/packages/image_picker) for the camera and gallery
 - **Charts:** drawn with `CustomPaint`, no chart package
 - **Updates:** [http](https://pub.dev/packages/http) for the GitHub release check and download, a Kotlin `PackageInstaller` bridge for the install, [url_launcher](https://pub.dev/packages/url_launcher) for the release page
 - **Theming:** Custom `ThemeManager` with dynamic brand colours via [flutter_colorpicker](https://pub.dev/packages/flutter_colorpicker)
@@ -86,6 +88,7 @@ lib/
 │   ├── backup_codec.dart      # Gzip encode/decode of the backup
 │   ├── backup_file.dart       # Export/import the backup as a file
 │   ├── drive_backup_service.dart # Scheduled Google Drive backup
+│   ├── photo_scan.dart        # Odometer and pump photo reading, scan report
 │   ├── update_service.dart    # GitHub release check
 │   ├── update_downloader.dart # Checked APK download
 │   ├── update_installer.dart  # Bridge to the Kotlin installer

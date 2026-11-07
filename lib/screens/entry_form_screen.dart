@@ -1,7 +1,12 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
 import '../models/vehicle.dart';
+import '../services/photo_scan.dart';
+import '../services/update_installer.dart';
 import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/fuel_type_manager.dart';
@@ -67,6 +72,18 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   // one. Defaults to 'total' when editing: the receipt total is what people
   // verify.
   late String _lastCostEdited = _isEdit ? 'total' : 'price';
+
+  // Photo pre-fill. ML Kit only runs on the phone, so the scan panel is
+  // hidden elsewhere (and in widget tests). The scanner is created on first
+  // use so an unused form never opens the recogniser.
+  static bool get _scanSupported =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+  PhotoScanner? _scanner;
+  bool _scanning = false;
+  final List<ScanResult> _scans = [];
+  // Marks the fields a photo filled until the user edits them.
+  bool _odoFromPhoto = false;
+  bool _fuelFromPhoto = false;
 
   @override
   void initState() {
@@ -157,8 +174,178 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     _notesController.dispose();
     _priceController.dispose();
     _costController.dispose();
+    _scanner?.close();
     super.dispose();
   }
+
+  Future<void> _scanPhoto(ScanKind kind) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final photo = await ImagePicker()
+        .pickImage(source: source, maxWidth: 2400, imageQuality: 92);
+    if (photo == null || !mounted) return;
+
+    setState(() => _scanning = true);
+    try {
+      final result = await (_scanner ??= PhotoScanner()).scan(photo.path, kind);
+      if (!mounted) return;
+      String? warning;
+      setState(() {
+        _scans
+          ..removeWhere((s) => s.kind == kind)
+          ..add(result);
+        warning = _applyScan(result);
+      });
+      if (warning != null) _showSnack(warning!);
+    } catch (e) {
+      debugPrint('Photo scan failed: $e');
+      if (mounted) _showSnack('Could not read the photo: $e');
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  /// Copies a scan into the form. Returns a message when nothing could be
+  /// filled. Called inside setState.
+  String? _applyScan(ScanResult r) {
+    if (r.kind == ScanKind.odometer) {
+      final o = r.odometer!;
+      if (o.value == null) return 'No odometer number found. Tap Report to send the details.';
+      if (o.isTrip) {
+        if (_baseOdometer == null) {
+          return '${o.label} shows distance since the last fill-up, '
+              'but this vehicle has no earlier fill-up. Enter the odometer.';
+        }
+        _isKmMode = true;
+      } else {
+        _isKmMode = false;
+      }
+      _odoController.text = '${o.value}';
+      _odoFromPhoto = true;
+      return null;
+    }
+    final p = r.pump!;
+    if (!p.found) {
+      return "The pump numbers didn't agree, so nothing was filled. "
+          'Tap Report to send the details.';
+    }
+    // Fill all three without the cost listeners recomputing each other.
+    _syncingCost = true;
+    _litersController.text = p.litres!.toStringAsFixed(2);
+    _priceController.text = p.rate!.toStringAsFixed(2);
+    _costController.text = p.amount!.toStringAsFixed(2);
+    _syncingCost = false;
+    _lastCostEdited = 'total';
+    _fuelFromPhoto = true;
+    return null;
+  }
+
+  Future<void> _shareScanReport(ScanResult r) async {
+    String version;
+    try {
+      version = await ChannelUpdateInstaller.instance.currentVersion();
+    } catch (_) {
+      version = 'unknown';
+    }
+    await r.share(version);
+  }
+
+  Widget _buildScanPanel() {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Fill from photos',
+              style: TextStyle(
+                  color: kTextPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          const Text('Read on your phone; nothing is uploaded.',
+              style: TextStyle(color: kTextMuted, fontSize: 12)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed:
+                      _scanning ? null : () => _scanPhoto(ScanKind.odometer),
+                  icon: const Icon(Icons.speed, size: 18),
+                  label: const Text('Odometer'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _scanning ? null : () => _scanPhoto(ScanKind.pump),
+                  icon: const Icon(Icons.local_gas_station, size: 18),
+                  label: const Text('Pump display'),
+                ),
+              ),
+            ],
+          ),
+          if (_scanning) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(),
+          ],
+          for (final s in _scans) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  _scanFilled(s)
+                      ? Icons.check_circle_outline
+                      : Icons.error_outline,
+                  size: 18,
+                  color: _scanFilled(s) ? accent : kDanger,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(s.summary,
+                      style:
+                          const TextStyle(color: kTextSecondary, fontSize: 13)),
+                ),
+                TextButton(
+                  onPressed: () => _shareScanReport(s),
+                  child: const Text('Report'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  bool _scanFilled(ScanResult s) => s.kind == ScanKind.odometer
+      ? s.odometer!.value != null
+      : s.pump!.found;
 
   void _onPriceChanged() {
     if (_syncingCost) return;
@@ -460,6 +647,11 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_scanSupported) ...[
+                _buildScanPanel(),
+                const SizedBox(height: 20),
+              ],
+
               // Mode switch
               ModeSwitch(
                 isKmMode: _isKmMode,
@@ -472,10 +664,14 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
               TextFormField(
                 controller: _odoController,
                 keyboardType: TextInputType.number,
+                onChanged: (_) {
+                  if (_odoFromPhoto) setState(() => _odoFromPhoto = false);
+                },
                 decoration: InputDecoration(
                   labelText: _isKmMode ? 'KM Driven' : 'Odometer (km)',
                   prefixIcon: const Icon(Icons.speed),
                   suffixText: 'km',
+                  helperText: _odoFromPhoto ? 'From photo, check it' : null,
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
@@ -510,10 +706,16 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 controller: _litersController,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
+                onChanged: (_) {
+                  if (_fuelFromPhoto) setState(() => _fuelFromPhoto = false);
+                },
+                decoration: InputDecoration(
                   labelText: 'Liters',
-                  prefixIcon: Icon(Icons.local_gas_station),
+                  prefixIcon: const Icon(Icons.local_gas_station),
                   suffixText: 'L',
+                  helperText: _fuelFromPhoto
+                      ? 'Litres, price and total from photo, check them'
+                      : null,
                 ),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Enter liters';

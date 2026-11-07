@@ -1,7 +1,7 @@
 name: fuelpulse
 description: "FuelPulse — Offline fuel fill-up tracker with km/L efficiency and brand comparison."
 publish_to: 'none'
-version: 2.0.0+5
+version: 2.1.0+6
 
 environment:
   sdk: ^3.11.0
@@ -32,6 +32,8 @@ dependencies:
   # win32 6 while the plugins above resolve win32 5.
   http: ^1.2.0
   url_launcher: ^6.3.0
+  google_mlkit_text_recognition: 1.0.1
+  image_picker: 1.2.4
 
 dev_dependencies:
   flutter_test:

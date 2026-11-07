@@ -58,6 +58,7 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            proguardFiles("proguard-rules.pro")
         }
     }
 }
