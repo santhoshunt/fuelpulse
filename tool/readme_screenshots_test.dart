@@ -5,7 +5,7 @@
 //   flutter test tool/readme_screenshots_test.dart --update-goldens
 //
 // Output: screenshots/dashboard.png, dashboard_dark.png, fuel.png,
-// refill.png, add_fill_up.png, analytics.png, appearance.png.
+// refill.png, add_fill_up.png, service.png, analytics.png, appearance.png.
 
 import 'dart:io';
 
@@ -18,6 +18,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
+import 'package:fuelpulse/models/service_record.dart';
+import 'package:fuelpulse/models/workshop.dart';
 import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/screens/app_shell.dart';
 import 'package:fuelpulse/theme/app_theme.dart';
@@ -142,6 +144,26 @@ void main() {
     await db.updateVehicle(_car);
     await db.insertVehicle(_bike);
     await db.insertLogs(_seed);
+    await db.upsertWorkshop(
+        const Workshop(id: 'w1', name: 'City Motors', area: 'MG Road'));
+    await db.insertService(const ServiceRecord(
+        id: 's1',
+        vehicleId: kDefaultVehicleId,
+        timestamp: '2026-03-02T10:00:00.000',
+        odometer: 10400,
+        workshopId: 'w1',
+        typeIds: ['air_filter'],
+        cost: 650));
+    await db.insertService(const ServiceRecord(
+        id: 's2',
+        vehicleId: kDefaultVehicleId,
+        timestamp: '2026-07-10T10:00:00.000',
+        odometer: 13500,
+        workshopId: 'w1',
+        typeIds: ['general', 'oil'],
+        cost: 4200,
+        nextDueKm: 18500,
+        nextDueDate: '2027-01-10'));
   });
 
   Future<void> settle(WidgetTester tester) async {
@@ -190,7 +212,8 @@ void main() {
       tab: 1, tap: find.text('24 Sep · 16,000 km · 30.50 L')));
   testWidgets('add fill-up', (t) => capture(t, 'add_fill_up',
       tab: 1, tap: find.byTooltip('Add refill')));
-  testWidgets('analytics', (t) => capture(t, 'analytics', tab: 2));
+  testWidgets('service', (t) => capture(t, 'service', tab: 2));
+  testWidgets('analytics', (t) => capture(t, 'analytics', tab: 3));
   testWidgets('appearance', (t) => capture(t, 'appearance',
-      tab: 3, tap: find.text('Colour palette'), dark: true));
+      tab: 4, tap: find.text('Colour palette'), dark: true));
 }

@@ -6,6 +6,8 @@ import '../utils/page_routes.dart';
 import 'appearance_screen.dart';
 import 'import_export_screen.dart';
 import 'pumps_screen.dart';
+import 'service_types_screen.dart';
+import 'workshops_screen.dart';
 import 'settings/about_section.dart';
 import 'settings/danger_section.dart';
 import 'settings/settings_widgets.dart';
@@ -28,6 +30,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// data are keyed on it, so they rebuild and read storage again.
   int _reloadToken = 0;
   int _pumpCount = 0;
+  int _workshopCount = 0;
+  int _typeCount = 0;
 
   @override
   void initState() {
@@ -36,8 +40,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadCounts() async {
-    final pumps = await DatabaseHelper().getPumps();
-    if (mounted) setState(() => _pumpCount = pumps.length);
+    final db = DatabaseHelper();
+    final pumps = await db.getPumps();
+    final workshops = await db.getWorkshops();
+    final types = await db.getServiceTypes();
+    if (!mounted) return;
+    setState(() {
+      _pumpCount = pumps.length;
+      _workshopCount = workshops.length;
+      _typeCount = types.length;
+    });
   }
 
   /// A restore (Drive or backup file) or a data wipe changed what Settings
@@ -96,6 +108,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: 'Petrol pumps',
                 trailing: Text('$_pumpCount', style: value),
                 onTap: () => _open(const PumpsScreen()),
+              ),
+              SettingsRow(
+                icon: Icons.store_outlined,
+                label: 'Workshops',
+                trailing: Text('$_workshopCount', style: value),
+                onTap: () => _open(const WorkshopsScreen()),
+              ),
+              SettingsRow(
+                icon: Icons.build_outlined,
+                label: 'Service types',
+                trailing: Text('$_typeCount', style: value),
+                onTap: () => _open(const ServiceTypesScreen()),
               ),
             ]),
             const SizedBox(height: 32),

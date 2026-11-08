@@ -5,11 +5,13 @@ import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
+import '../models/service_type.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/page_routes.dart';
+import '../utils/service_schedule.dart';
 import '../utils/tank_level_calculator.dart';
 import '../utils/trend_calculator.dart';
 import '../utils/vehicle_manager.dart';
@@ -17,6 +19,7 @@ import '../widgets/gauge_card.dart';
 import '../widgets/trend_chart.dart';
 import '../widgets/vehicle_picker.dart';
 import 'entry_form_screen.dart';
+import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
 
 /// The Dashboard tab: the active vehicle's gauge card, spend tiles and the
 /// mileage of its last 12 full-tank segments.
@@ -38,6 +41,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   CostStats? _cost;
   List<SegmentTrendPoint> _trend = const [];
   double? _tankLevel;
+  NextService? _next;
+  Map<String, ServiceType> _types = const {};
   bool _loading = true;
 
   @override
@@ -69,6 +74,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final overall = calculateBrandEfficiency(chrono);
     final cap = vehicle.tankCapacity ?? 0;
     final levels = calculateTankLevels(chrono, cap, eff);
+    final services = await _db.getServices(vehicle.id);
+    final types = await _db.getServiceTypes();
+    final next = nextServiceFor(services, await latestOdometer(vehicle.id));
     if (!mounted) return;
     setState(() {
       _vehicle = vehicle;
@@ -78,6 +86,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _cost = calculateCostStats(chrono);
       _trend = calculateSegmentTrend(chrono);
       _tankLevel = chrono.isEmpty ? null : levels[chrono.last.id];
+      _next = next;
+      _types = {for (final t in types) t.id: t};
       _loading = false;
     });
   }
@@ -149,6 +159,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         tankCapacity: _vehicle?.tankCapacity,
         emptyMessage: _chrono.isEmpty ? 'Add your first fill-up' : null,
       ),
+      if (_next != null) ...[
+        const SizedBox(height: 14),
+        _nextService(_next!, colors),
+      ],
       if (_chrono.isEmpty) ...[
         const SizedBox(height: 14),
         FilledButton.icon(
@@ -217,6 +231,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _nextService(NextService n, AppColors colors) {
+    final r = n.record;
+    final at = [
+      if (r.nextDueKm != null) '${NumberFormat('#,##,##0', 'en_IN').format(r.nextDueKm!)} km',
+      if (r.nextDueDate != null)
+        DateFormat('d MMM').format(DateTime.parse(r.nextDueDate!)),
+    ].join(' or ');
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: colors.primaryTint,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.build_outlined, color: colors.primary),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('NEXT SERVICE',
+                      style: TextStyle(
+                          color: colors.textSecondary,
+                          fontSize: 11,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text('${serviceTypeNames(r, _types)} at $at',
+                      style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: n.progress(),
+                      minHeight: 5,
+                      color: n.overdue ? colors.danger : colors.primarySoft,
+                      backgroundColor: colors.cardBorder,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(dueText(n),
+                      style: TextStyle(
+                          color: n.overdue ? colors.danger : colors.textSecondary,
+                          fontSize: 13)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -11,6 +11,7 @@ import '../widgets/update_banner.dart';
 import 'analytics_screen.dart';
 import 'dashboard_screen.dart';
 import 'fuel_list_screen.dart';
+import 'service_screen.dart';
 import 'settings_screen.dart';
 
 /// The app's root: one tab per area over an [IndexedStack], so each tab
@@ -153,6 +154,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               children: [
                 DashboardScreen(reload: _reload),
                 FuelListScreen(reload: _reload),
+                ServiceScreen(reload: _reload),
                 AnalyticsScreen(reload: _reload),
                 const SettingsScreen(),
               ],
@@ -173,6 +175,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               icon: Icon(Icons.local_gas_station_outlined),
               selectedIcon: Icon(Icons.local_gas_station),
               label: 'Fuel'),
+          NavigationDestination(
+              icon: Icon(Icons.build_outlined),
+              selectedIcon: Icon(Icons.build),
+              label: 'Service'),
           NavigationDestination(
               icon: Icon(Icons.insights_outlined),
               selectedIcon: Icon(Icons.insights),
