@@ -83,8 +83,9 @@ class ServiceReminders {
   }
 
   /// Rebuilds every date reminder from the database: at launch, and after
-  /// a service is saved or deleted. With [ask], prompts for permission the
-  /// first time a reminder is set.
+  /// a service is saved or deleted, and after data is deleted or restored.
+  /// With [ask], shows the permission prompt (once the user answered it,
+  /// Android does not show it again).
   Future<void> rescheduleAll({bool ask = false}) async {
     if (!supported) return;
     try {
@@ -93,14 +94,12 @@ class ServiceReminders {
       final db = DatabaseHelper();
       final types = await _typeNames();
       final now = DateTime.now();
-      var any = false;
       for (final v in await db.getVehicles()) {
         for (final r in openSchedules(await db.getServices(v.id))) {
           final due = DateTime.tryParse(r.nextDueDate ?? '');
           if (due == null) continue;
           final at = DateTime(due.year, due.month, due.day, 9);
           if (!at.isAfter(now)) continue;
-          any = true;
           await _plugin.zonedSchedule(
             id: _id(r.id),
             // A fixed instant: no device time zone lookup needed.
@@ -112,7 +111,7 @@ class ServiceReminders {
           );
         }
       }
-      if (any && ask) await askPermission();
+      if (ask) await askPermission();
     } catch (e) {
       debugPrint('Service reminders failed: $e');
     }
@@ -132,7 +131,8 @@ class ServiceReminders {
       for (final r in openSchedules(await db.getServices(vehicleId))) {
         final due = r.nextDueKm;
         if (due == null || odometer < due - kmWarning) continue;
-        final key = 'fuel_km_reminded_${r.id}';
+        // Per due km, so a rescheduled service reminds again.
+        final key = 'fuel_km_reminded_${r.id}_$due';
         if (prefs.getBool(key) ?? false) continue;
         await _plugin.show(
           id: _id('km${r.id}'),

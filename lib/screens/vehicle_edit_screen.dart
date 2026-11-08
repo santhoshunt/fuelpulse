@@ -2,14 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
-import '../utils/mileage_bands.dart';
-import '../utils/page_routes.dart';
 import '../widgets/vehicle_picker.dart' show vehicleIcon, vehicleTypeLabel;
-import 'mileage_ranges_screen.dart';
 import 'settings/settings_widgets.dart';
 
-/// Add ([initial] null) or edit a vehicle: name, make and model, type, tank
-/// size and mileage ranges. Save returns the vehicle; saving it is the
+/// Add ([initial] null) or edit a vehicle: name, make and model, type and
+/// tank size. Its grading ranges are under Settings → Grading. Save returns the vehicle; saving it is the
 /// caller's. [onDelete] (edit only) deletes after its own confirmation and
 /// says whether it did.
 class VehicleEditScreen extends StatefulWidget {
@@ -36,8 +33,6 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
       text: widget.initial?.tankCapacity?.toString() ?? '');
   late VehicleType _type = widget.initial?.type ?? VehicleType.car;
 
-  /// Null keeps following the type's defaults.
-  late List<double>? _bands = widget.initial?.mileageBands;
   String? _nameError;
   String? _capError;
 
@@ -70,7 +65,6 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
               name: name,
               type: _type,
               model: _model.text.trim(),
-              mileageBands: _bands,
               tankCapacity: tank,
               sortOrder: widget.nextSortOrder,
               createdAt: DateTime.now().toIso8601String(),
@@ -79,34 +73,10 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
               name: name,
               type: _type,
               model: _model.text.trim(),
-              mileageBands: _bands,
-              clearMileageBands: _bands == null,
               tankCapacity: tank,
               clearTankCapacity: tank == null,
             ),
     );
-  }
-
-  Future<void> _ranges() async {
-    final limits = await Navigator.push<List<double>>(
-      context,
-      SmoothPageRoute(
-        page: MileageRangesScreen(
-          vehicleName: _name.text.trim().isEmpty ? 'this vehicle' : _name.text.trim(),
-          type: _type,
-          limits: _bands ?? defaultBandsFor(_type).limits,
-        ),
-      ),
-    );
-    if (limits == null) return;
-    final defaults = defaultBandsFor(_type).limits;
-    setState(() {
-      var same = true;
-      for (var i = 0; i < 4; i++) {
-        if (limits[i] != defaults[i]) same = false;
-      }
-      _bands = same ? null : limits;
-    });
   }
 
   Future<void> _delete() async {
@@ -174,20 +144,6 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
             child: Text('Leave empty to hide the tank estimate.', style: note),
           ),
           const SizedBox(height: 24),
-          sectionHeader('Mileage'),
-          const SizedBox(height: 12),
-          settingsGroup([
-            SettingsRow(
-              icon: Icons.tune,
-              label: 'Mileage ranges',
-              trailing: Text(
-                  _bands == null
-                      ? '${vehicleTypeLabel(_type)} defaults'
-                      : 'Custom',
-                  style: TextStyle(color: colors.textSecondary, fontSize: 15)),
-              onTap: _ranges,
-            ),
-          ]),
           const SizedBox(height: 28),
           SizedBox(
             height: 52,

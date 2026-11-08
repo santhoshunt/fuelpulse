@@ -15,7 +15,7 @@ class DatabaseHelper {
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
 
-  static const int schemaVersion = 4;
+  static const int schemaVersion = 5;
 
   static Database? _database;
 
@@ -76,6 +76,7 @@ class DatabaseHelper {
     await _createVehicles(db);
     await db.execute(_createVehicleIndex);
     await _toV4(db);
+    await _toV5(db);
   }
 
   @visibleForTesting
@@ -96,6 +97,13 @@ class DatabaseHelper {
       await db.execute(_createVehicleIndex);
     }
     if (oldVersion < 4) await _toV4(db);
+    if (oldVersion < 5) await _toV5(db);
+  }
+
+  /// Schema 5: per-vehicle cost per km bands and picture choice.
+  static Future<void> _toV5(DatabaseExecutor db) async {
+    await db.execute('ALTER TABLE vehicles ADD COLUMN costBands TEXT');
+    await db.execute('ALTER TABLE vehicles ADD COLUMN icon TEXT');
   }
 
   /// Schema 4, additive only: pumps as named stations of a brand,
@@ -217,7 +225,11 @@ class DatabaseHelper {
     ''');
     // Schema 3 columns only: model and mileageBands arrive with schema 4.
     await db.insert('vehicles',
-        defaultVehicle().toMap()..remove('model')..remove('mileageBands'));
+        defaultVehicle().toMap()
+          ..remove('model')
+          ..remove('mileageBands')
+          ..remove('costBands')
+          ..remove('icon'));
   }
 
   /// The vehicle every pre-v2.0.0 log belongs to, as created by the schema 3

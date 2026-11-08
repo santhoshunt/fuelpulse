@@ -138,7 +138,12 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
         log.totalCost ?? computeTotalCost(log.pricePerLitre, log.liters);
     final kmL = _eff?.value;
     final cap = _vehicle?.tankCapacity ?? 0;
-    final bands = (_vehicle == null ? defaultBandsFor(VehicleType.car) : bandsFor(_vehicle!));
+    // Graded on mileage and, with a price, cost per km.
+    final grade = kmL == null
+        ? null
+        : gradeOf(_vehicle ?? const Vehicle(id: '', name: '', createdAt: ''),
+                kmL, price)
+            .grade;
     final brightness = Theme.of(context).brightness;
 
     return [
@@ -184,7 +189,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
                       style: TextStyle(
                           color: kmL == null || !log.fullTank
                               ? colors.textSecondary
-                              : bandColor(bands.bandIndex(kmL), brightness),
+                              : bandColor(grade!, brightness),
                           fontSize: log.fullTank ? 34 : 18,
                           fontWeight: FontWeight.w700,
                           height: 1)),
@@ -193,7 +198,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
                     Text(
                         kmL == null
                             ? ((_eff?.isPending ?? false) ? 'pending' : 'km/L')
-                            : 'km/L · ${MileageBands.names[bands.bandIndex(kmL)]}',
+                            : 'km/L · ${MileageBands.names[grade!]}',
                         style: TextStyle(
                             color: colors.textSecondary, fontSize: 12)),
                   ],

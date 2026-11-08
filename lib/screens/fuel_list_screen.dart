@@ -7,10 +7,10 @@ import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
-import '../utils/mileage_bands.dart';
 import '../utils/page_routes.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/brand_logo.dart';
+import '../widgets/grade_sheet.dart';
 import '../widgets/vehicle_picker.dart';
 import 'entry_form_screen.dart';
 import 'refill_detail_screen.dart';
@@ -86,35 +86,6 @@ class _FuelListScreenState extends State<FuelListScreen> {
         vehicles: vehicles, selectedId: current.id);
     if (picked == null) return;
     await setActiveVehicle(picked.id);
-    widget.reload.value++;
-  }
-
-  Future<bool> _confirmDelete(FuelLog log) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Entry'),
-        content: Text(
-            'Delete the fill-up on ${log.odometer} km? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.of(ctx).danger,
-                foregroundColor: Colors.white),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
-
-  Future<void> _delete(FuelLog log) async {
-    await _db.deleteLog(log.id);
     widget.reload.value++;
   }
 
@@ -234,7 +205,6 @@ class _FuelListScreenState extends State<FuelListScreen> {
   }
 
   List<Widget> _months(AppColors colors) {
-    final bands = (_vehicle == null ? defaultBandsFor(VehicleType.car) : bandsFor(_vehicle!));
     final groups = <String, List<FuelLog>>{};
     for (final log in _logs) {
       final at = DateTime.tryParse(log.timestamp);
@@ -263,7 +233,7 @@ class _FuelListScreenState extends State<FuelListScreen> {
                       indent: 14,
                       endIndent: 14,
                       color: colors.cardBorder),
-                _row(g.value[i], bands, colors),
+                _row(g.value[i], colors),
               ],
             ],
           ),
@@ -272,116 +242,121 @@ class _FuelListScreenState extends State<FuelListScreen> {
     ];
   }
 
-  Widget _row(FuelLog log, MileageBands bands, AppColors colors) {
+  /// The grade sheet, then whatever was picked in it.
+  Future<void> _tap(FuelLog log) async {
+    final v = _vehicle;
+    if (v == null) return;
+    final action =
+        await showGradeSheet(context, log: log, vehicle: v, eff: _eff[log.id]);
+    if (!mounted || action == null) return;
+    switch (action) {
+      case GradeAction.open:
+        await _open(RefillDetailScreen(logId: log.id));
+      case GradeAction.edit:
+        await _open(EntryFormScreen(logId: log.id));
+      case GradeAction.delete:
+        if (await _confirmDelete(log)) {
+          await _db.deleteLog(log.id);
+          widget.reload.value++;
+        }
+    }
+  }
+
+  Future<bool> _confirmDelete(FuelLog log) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Entry'),
+        content: Text(
+            'Delete the fill-up on ${log.odometer} km? This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.of(ctx).danger,
+                foregroundColor: Colors.white),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Widget _row(FuelLog log, AppColors colors) {
     final at = DateTime.tryParse(log.timestamp);
     final total = log.totalCost ?? computeTotalCost(log.pricePerLitre, log.liters);
     final price =
         log.pricePerLitre ?? computePricePerLitre(log.totalCost, log.liters);
-    final money = [
-      if (price != null) '₹${price.toStringAsFixed(2)}/L',
-      if (total != null) '₹${_grouped.format(total)}',
-    ].join(' · ');
+    final kmL = _eff[log.id]?.value;
     final sub = TextStyle(color: colors.textSecondary, fontSize: 13);
+    final figures = [
+      if (kmL != null) '${kmL.toStringAsFixed(1)} km/L',
+      if (kmL != null && price != null)
+        '₹${(price / kmL).toStringAsFixed(2)}/km'
+      else if (price != null)
+        '₹${price.toStringAsFixed(2)}/L',
+    ].join(' · ');
 
-    return Dismissible(
-      key: ValueKey(log.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        color: colors.danger,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete_outline, color: Colors.white),
-      ),
-      confirmDismiss: (_) => _confirmDelete(log),
-      onDismissed: (_) => _delete(log),
-      child: InkWell(
-        onTap: () => _open(RefillDetailScreen(logId: log.id)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 52,
-                child: Column(
-                  children: [
-                    BrandLogo(brandName: log.pumpBrand, size: 40),
-                    const SizedBox(height: 3),
-                    Text(log.fuelType,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: colors.textSecondary, fontSize: 11)),
-                  ],
-                ),
+    return InkWell(
+      onTap: () => _tap(log),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 52,
+              child: Column(
+                children: [
+                  BrandLogo(brandName: log.pumpBrand, size: 40),
+                  const SizedBox(height: 3),
+                  Text(log.fuelType,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(color: colors.textSecondary, fontSize: 11)),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(log.pumpBrand.isEmpty ? 'Unknown' : log.pumpBrand,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            color: colors.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(log.pumpBrand.isEmpty ? 'Unknown' : log.pumpBrand,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(
+                      [
+                        if (at != null) DateFormat('d MMM').format(at),
+                        '${_grouped.format(log.odometer)} km',
+                        '${log.liters.toStringAsFixed(2)} L',
+                        if (total != null) '₹${_grouped.format(total)}',
+                      ].join(' · '),
+                      style: sub),
+                  if (figures.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    Text(
-                        [
-                          if (at != null) DateFormat('d MMM').format(at),
-                          '${_grouped.format(log.odometer)} km',
-                          '${log.liters.toStringAsFixed(2)} L',
-                        ].join(' · '),
-                        style: sub),
-                    if (money.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(money, style: sub),
-                    ],
+                    Text(figures,
+                        style: sub.copyWith(
+                            color: colors.textPrimary,
+                            fontWeight: FontWeight.w500)),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              _mileage(log, bands, colors),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            if (_vehicle != null) gradeChip(context, log, _vehicle!, _eff[log.id]),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _mileage(FuelLog log, MileageBands bands, AppColors colors) {
-    if (!log.fullTank) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          border: Border.all(color: colors.cardBorder),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text('Partial',
-            style: TextStyle(
-                color: colors.textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-      );
-    }
-    final e = _eff[log.id];
-    final v = e?.value;
-    final brightness = Theme.of(context).brightness;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(v == null ? '—' : v.toStringAsFixed(1),
-            style: TextStyle(
-                color: v == null
-                    ? colors.textSecondary
-                    : bandColor(bands.bandIndex(v), brightness),
-                fontSize: 24,
-                fontWeight: FontWeight.w700)),
-        // Known once the next full tank shows how far this fuel went.
-        Text(v == null && (e?.isPending ?? false) ? 'pending' : 'km/L',
-            style: TextStyle(color: colors.textSecondary, fontSize: 12)),
-      ],
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
 import '../theme/app_colors.dart';
 import 'lcd_odometer.dart';
@@ -18,6 +19,10 @@ class GaugeCard extends StatelessWidget {
   final double? tankLitres;
   final double? tankCapacity;
 
+  /// When the last refill was, for the tank row: the level is the one
+  /// right after it, not a live reading.
+  final DateTime? tankDate;
+
   /// Shown under the dial in place of the numbers when there are no logs.
   final String? emptyMessage;
 
@@ -31,6 +36,7 @@ class GaugeCard extends StatelessWidget {
     this.odometerTenths,
     this.tankLitres,
     this.tankCapacity,
+    this.tankDate,
     this.emptyMessage,
   });
 
@@ -177,7 +183,11 @@ class GaugeCard extends StatelessWidget {
         Row(
           children: [
             Expanded(
-                child: Text('Fuel in tank after last refill', style: small)),
+                child: Text(
+                    tankDate == null
+                        ? 'In the tank after the last refill'
+                        : 'In the tank after the ${DateFormat('d MMM').format(tankDate!)} refill',
+                    style: small)),
             Text('${level.toStringAsFixed(1)} of ${_trim(cap)} L',
                 style: small),
           ],
@@ -195,8 +205,8 @@ class GaugeCard extends StatelessWidget {
         if (avg != null && avg > 0) ...[
           const SizedBox(height: 6),
           Text(
-              'Range about ${(level * avg).round()} km at your '
-              '${avg.toStringAsFixed(1)} km/L average',
+              'Enough for about ${(level * avg).round()} km from that refill '
+              'at your ${avg.toStringAsFixed(1)} km/L average',
               style: small),
         ],
       ],

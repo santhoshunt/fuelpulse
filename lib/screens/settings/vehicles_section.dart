@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../db/database_helper.dart';
 import '../../models/vehicle.dart';
+import '../../services/service_reminders.dart';
 import '../../widgets/vehicle_picker.dart';
 import 'settings_widgets.dart';
 
@@ -72,6 +73,7 @@ class _VehiclesSectionState extends State<VehiclesSection> {
     );
     if (confirm != true) return false;
     await _db.deleteVehicle(vehicle.id);
+    await ServiceReminders.instance.rescheduleAll();
     if (mounted) showSettingsSnack(context, 'Deleted "${vehicle.name}".');
     await _load();
     return true;
@@ -101,20 +103,20 @@ class _VehiclesSectionState extends State<VehiclesSection> {
           style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 12),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.of(context).card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.of(context).cardBorder),
-          ),
+        Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
               for (var i = 0; i < _vehicles.length; i++) ...[
                 if (i > 0)
                   Divider(
-                      height: 1, color: AppColors.of(context).cardBorder),
+                      height: 1,
+                      indent: 50,
+                      endIndent: 16,
+                      color: AppColors.of(context).cardBorder),
                 Padding(
-                  padding: const EdgeInsets.only(left: 16),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
                   child: Row(
                     children: [
                       Icon(vehicleIcon(_vehicles[i].type),
@@ -127,13 +129,16 @@ class _VehiclesSectionState extends State<VehiclesSection> {
                             Text(
                               _vehicles[i].name,
                               style: TextStyle(
-                                  color: AppColors.of(context).textPrimary, fontSize: 14),
+                                  color: AppColors.of(context).textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600),
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               _subtitle(_vehicles[i]),
                               style: TextStyle(
-                                  color: AppColors.of(context).textSecondary, fontSize: 12),
+                                  color: AppColors.of(context).textSecondary,
+                                  fontSize: 12),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
@@ -155,7 +160,9 @@ class _VehiclesSectionState extends State<VehiclesSection> {
                             size: 18,
                             color: canDelete
                                 ? AppColors.of(context).danger.withValues(alpha: 0.7)
-                                : AppColors.of(context).textSecondary.withValues(alpha: 0.4)),
+                                : AppColors.of(context)
+                                    .textSecondary
+                                    .withValues(alpha: 0.4)),
                         onPressed:
                             canDelete ? () => _delete(_vehicles[i]) : null,
                         visualDensity: VisualDensity.compact,
@@ -165,15 +172,28 @@ class _VehiclesSectionState extends State<VehiclesSection> {
                 ),
               ],
               Divider(height: 1, color: AppColors.of(context).cardBorder),
-              TextButton.icon(
-                onPressed: _add,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add vehicle'),
+              // A full-width row, so its press highlight stays inside it.
+              InkWell(
+                onTap: _add,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add, size: 18, color: accent),
+                      const SizedBox(width: 8),
+                      Text('Add vehicle',
+                          style: TextStyle(
+                              color: accent,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-        ),
-      ],
+        ),      ],
     );
   }
 }

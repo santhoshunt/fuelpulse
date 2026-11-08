@@ -203,9 +203,10 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     } else {
       await _db.updateService(record);
     }
-    // The first dated schedule asks for the notification permission.
-    await ServiceReminders.instance
-        .rescheduleAll(ask: record.nextDueDate != null);
+    // The first schedule, by km or date, asks for the notification
+    // permission: a km reminder needs it as much as a dated one.
+    await ServiceReminders.instance.rescheduleAll(
+        ask: record.nextDueKm != null || record.nextDueDate != null);
     if (mounted) Navigator.pop(context, true);
   }
 

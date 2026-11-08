@@ -48,9 +48,13 @@ class UpdateDownloader {
   final http.Client Function() _clientFactory;
   final Future<Directory> Function() _dir;
 
+  /// Pauses before each retry of a 5xx response; tests pass shorter ones.
+  final List<Duration> retryDelays;
+
   UpdateDownloader({
     http.Client Function()? clientFactory,
     Future<Directory> Function()? dir,
+    this.retryDelays = const [Duration(seconds: 2), Duration(seconds: 5)],
   })  : _clientFactory = clientFactory ?? http.Client.new,
         _dir = dir ?? defaultDir;
 
@@ -165,10 +169,18 @@ class UpdateDownloader {
           'Refused to download from ${uri.scheme}://${uri.host}.',
         );
       }
-      final request = http.Request('GET', uri)..followRedirects = false;
-      final response = await client
-          .send(request)
-          .timeout(const Duration(seconds: 20));
+      // A 5xx from GitHub's download servers (504 gateway timeout, 503
+      // busy) is usually over in seconds: try the same hop twice more.
+      http.StreamedResponse response;
+      for (var attempt = 0;; attempt++) {
+        final request = http.Request('GET', uri)..followRedirects = false;
+        response = await client
+            .send(request)
+            .timeout(const Duration(seconds: 20));
+        if (response.statusCode < 500 || attempt == retryDelays.length) break;
+        await response.stream.drain<void>();
+        await Future<void>.delayed(retryDelays[attempt]);
+      }
       if (response.isRedirect ||
           const {301, 302, 303, 307, 308}.contains(response.statusCode)) {
         final location = response.headers['location'];
@@ -181,9 +193,10 @@ class UpdateDownloader {
       }
       if (response.statusCode != 200) {
         await response.stream.drain<void>();
-        throw UpdateDownloadException(
-          'GitHub returned HTTP ${response.statusCode}.',
-        );
+        throw UpdateDownloadException(response.statusCode >= 500
+            ? "GitHub's download server didn't respond (HTTP "
+                '${response.statusCode}). Try again in a minute.'
+            : 'GitHub returned HTTP ${response.statusCode}.');
       }
       return response;
     }

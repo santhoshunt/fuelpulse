@@ -21,6 +21,43 @@ class MileageBands {
   }
 }
 
+/// Five cost bands split by four descending ₹/km limits: cheaper per km is
+/// better, so a cost above the first limit is Poor and below the last Great.
+class CostBands {
+  final List<double> limits;
+
+  const CostBands(this.limits);
+
+  /// 0 (Poor) to 4 (Great). A cost equal to a limit counts as the better band.
+  int bandIndex(double perKm) {
+    var i = 0;
+    while (i < limits.length && perKm <= limits[i]) {
+      i++;
+    }
+    return i;
+  }
+}
+
+/// Typical ₹/km at 2026 prices: a bike at 30 to 40 km/L, a car at 12 to 18.
+CostBands defaultCostBandsFor(VehicleType t) => t == VehicleType.bike
+    ? const CostBands([5, 4, 3.5, 3])
+    : const CostBands([10, 8, 7, 6]);
+
+CostBands costBandsFor(Vehicle v) => v.costBands != null
+    ? CostBands(v.costBands!)
+    : defaultCostBandsFor(v.type);
+
+/// A fill-up's grade from both measures: the lower of its km/L band and,
+/// when it has a price, its ₹/km band.
+({int grade, int mileage, int? cost, double? perKm}) gradeOf(
+    Vehicle v, double kmL, double? pricePerLitre) {
+  final m = bandsFor(v).bandIndex(kmL);
+  final perKm =
+      pricePerLitre != null && kmL > 0 ? pricePerLitre / kmL : null;
+  final c = perKm == null ? null : costBandsFor(v).bandIndex(perKm);
+  return (grade: c == null || m < c ? m : c, mileage: m, cost: c, perKm: perKm);
+}
+
 /// The vehicle's own bands, else the defaults for its type.
 MileageBands bandsFor(Vehicle v) => v.mileageBands != null
     ? MileageBands(v.mileageBands!)

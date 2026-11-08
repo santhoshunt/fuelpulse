@@ -17,7 +17,7 @@ import '../utils/trend_calculator.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/gauge_card.dart';
 import '../widgets/trend_chart.dart';
-import '../widgets/vehicle_picker.dart';
+import '../widgets/vehicle_picker.dart' show showVehiclePicker, vehicleIcon;
 import 'entry_form_screen.dart';
 import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
 
@@ -97,8 +97,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (current == null) return;
     final vehicles = await _db.getVehicles();
     if (!mounted) return;
-    final picked = await showVehiclePicker(context,
-        vehicles: vehicles, selectedId: current.id);
+    final picked = await showVehiclePicker(
+      context,
+      vehicles: vehicles,
+      selectedId: current.id,
+    );
     if (picked == null) return;
     await setActiveVehicle(picked.id);
     // Every tab shows the active vehicle.
@@ -109,7 +112,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final v = _vehicle;
     if (v == null) return;
     await Navigator.push(
-        context, SmoothPageRoute(page: EntryFormScreen(vehicleId: v.id)));
+      context,
+      SmoothPageRoute(page: EntryFormScreen(vehicleId: v.id)),
+    );
     widget.reload.value++;
   }
 
@@ -129,10 +134,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<Widget> _content(AppColors colors) {
-    final values = _eff.values
-        .map((e) => e.value)
-        .whereType<double>()
-        .toList();
+    final values = _eff.values.map((e) => e.value).whereType<double>().toList();
     double? last;
     for (final log in _chrono.reversed) {
       final v = _eff[log.id]?.value;
@@ -157,6 +159,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         odometerKm: latest?.odometer,
         tankLitres: _tankLevel,
         tankCapacity: _vehicle?.tankCapacity,
+        tankDate: latest == null ? null : DateTime.tryParse(latest.timestamp),
         emptyMessage: _chrono.isEmpty ? 'Add your first fill-up' : null,
       ),
       if (_next != null) ...[
@@ -176,8 +179,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 14),
         TrendChart(
           title: 'Mileage, last 12 refills',
-          points:
-              trend.map((p) => TrendPoint(p.closedAt, p.kmPerLitre)).toList(),
+          points: trend
+              .map((p) => TrendPoint(p.closedAt, p.kmPerLitre))
+              .toList(),
           formatValue: (v) => v.toStringAsFixed(1),
           emptyMessage: 'Appears after 2 completed full-tank segments.',
         ),
@@ -188,43 +192,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _header(AppColors colors) {
     return Row(
       children: [
+        // The active vehicle's type, so a switch shows at a glance.
         Container(
           width: 44,
           height: 44,
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: colors.primaryTint,
             borderRadius: BorderRadius.circular(22),
           ),
-          child: Text('FP',
-              style: TextStyle(
-                  color: colors.primary,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15)),
+          child: Icon(
+            vehicleIcon(_vehicle?.type ?? VehicleType.car),
+            color: colors.primary,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('FuelPulse',
-                  style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.4,
-                      height: 1.1)),
+              Text(
+                'FuelPulse',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
+                  height: 1.1,
+                ),
+              ),
               InkWell(
                 onTap: _pickVehicle,
                 borderRadius: BorderRadius.circular(6),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text('${_vehicle?.name ?? ''} ▾',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          color: colors.primary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600)),
+                  child: Text(
+                    '${_vehicle?.name ?? ''} ▾',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colors.primary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -237,7 +246,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _nextService(NextService n, AppColors colors) {
     final r = n.record;
     final at = [
-      if (r.nextDueKm != null) '${NumberFormat('#,##,##0', 'en_IN').format(r.nextDueKm!)} km',
+      if (r.nextDueKm != null)
+        '${NumberFormat('#,##,##0', 'en_IN').format(r.nextDueKm!)} km',
       if (r.nextDueDate != null)
         DateFormat('d MMM').format(DateTime.parse(r.nextDueDate!)),
     ].join(' or ');
@@ -261,18 +271,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('NEXT SERVICE',
-                      style: TextStyle(
-                          color: colors.textSecondary,
-                          fontSize: 11,
-                          letterSpacing: 1.2,
-                          fontWeight: FontWeight.w600)),
+                  Text(
+                    'NEXT SERVICE',
+                    style: TextStyle(
+                      color: colors.textSecondary,
+                      fontSize: 11,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text('${serviceTypeNames(r, _types)} at $at',
-                      style: TextStyle(
-                          color: colors.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600)),
+                  Text(
+                    '${serviceTypeNames(r, _types)} at $at',
+                    style: TextStyle(
+                      color: colors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),
@@ -284,10 +300,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(dueText(n),
-                      style: TextStyle(
-                          color: n.overdue ? colors.danger : colors.textSecondary,
-                          fontSize: 13)),
+                  Text(
+                    dueText(n),
+                    style: TextStyle(
+                      color: n.overdue ? colors.danger : colors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -313,8 +332,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       }
     }
-    final pricedAt =
-        priced == null ? null : DateTime.tryParse(priced.timestamp);
+    final pricedAt = priced == null
+        ? null
+        : DateTime.tryParse(priced.timestamp);
 
     // avgMonthlySpend is totalSpend over the months that have cost data.
     final avgMonthly = cost.avgMonthlySpend;
@@ -400,36 +420,45 @@ class _Tile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label.toUpperCase(),
-                style: TextStyle(
-                    color: colors.textSecondary,
-                    fontSize: 11,
-                    letterSpacing: 1.2,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 11,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 4),
             Text.rich(
               TextSpan(
                 text: value,
                 style: TextStyle(
-                    color: colors.textPrimary,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700),
+                  color: colors.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
                 children: [
                   if (unit != null)
                     TextSpan(
-                        text: unit,
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w500)),
+                      text: unit,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                 ],
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
-            Text(caption,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+            Text(
+              caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: colors.textSecondary, fontSize: 13),
+            ),
           ],
         ),
       ),

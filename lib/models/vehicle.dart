@@ -21,6 +21,14 @@ class Vehicle {
   /// means the defaults for [type].
   final List<double>? mileageBands;
 
+  /// Four descending ₹/km limits splitting the five cost bands (lower
+  /// cost is better); null means the defaults for [type].
+  final List<double>? costBands;
+
+  /// `motorcycle` or `scooter` for a bike, `file:NAME` for the user's own
+  /// picture, null for the type's default picture.
+  final String? icon;
+
   /// Litres. Null when unknown: the tank level estimate is then hidden.
   final double? tankCapacity;
   final int sortOrder;
@@ -32,6 +40,8 @@ class Vehicle {
     this.type = VehicleType.car,
     this.model = '',
     this.mileageBands,
+    this.costBands,
+    this.icon,
     this.tankCapacity,
     this.sortOrder = 0,
     required this.createdAt,
@@ -50,6 +60,8 @@ class Vehicle {
         'model': model,
         'mileageBands':
             mileageBands == null ? null : jsonEncode(mileageBands),
+        'costBands': costBands == null ? null : jsonEncode(costBands),
+        'icon': icon,
         'tankCapacity': tankCapacity,
         'sortOrder': sortOrder,
         'createdAt': createdAt,
@@ -62,14 +74,16 @@ class Vehicle {
     final cap = (map['tankCapacity'] as num?)?.toDouble();
     // A JSON string in SQLite, a list in backup JSON. Anything but four
     // numbers falls back to the type's defaults.
-    List<double>? bands;
-    try {
-      final raw = map['mileageBands'];
-      final list = raw is String ? jsonDecode(raw) : raw;
-      if (list is List && list.length == 4) {
-        bands = list.map((e) => (e as num).toDouble()).toList();
-      }
-    } catch (_) {}
+    List<double>? four(Object? raw) {
+      try {
+        final list = raw is String ? jsonDecode(raw) : raw;
+        if (list is List && list.length == 4) {
+          return list.map((e) => (e as num).toDouble()).toList();
+        }
+      } catch (_) {}
+      return null;
+    }
+    final bands = four(map['mileageBands']);
     return Vehicle(
       id: map['id'] as String,
       name: map['name'] as String,
@@ -77,6 +91,8 @@ class Vehicle {
           orElse: () => VehicleType.other),
       model: map['model'] as String? ?? '',
       mileageBands: bands,
+      costBands: four(map['costBands']),
+      icon: map['icon'] as String?,
       tankCapacity: cap != null && cap > 0 ? cap : null,
       sortOrder: (map['sortOrder'] as num?)?.toInt() ?? 0,
       createdAt: map['createdAt'] as String? ?? '',
@@ -89,6 +105,10 @@ class Vehicle {
     String? model,
     List<double>? mileageBands,
     bool clearMileageBands = false,
+    List<double>? costBands,
+    bool clearCostBands = false,
+    String? icon,
+    bool clearIcon = false,
     double? tankCapacity,
     bool clearTankCapacity = false,
     int? sortOrder,
@@ -100,6 +120,8 @@ class Vehicle {
       model: model ?? this.model,
       mileageBands:
           clearMileageBands ? null : (mileageBands ?? this.mileageBands),
+      costBands: clearCostBands ? null : (costBands ?? this.costBands),
+      icon: clearIcon ? null : (icon ?? this.icon),
       tankCapacity:
           clearTankCapacity ? null : (tankCapacity ?? this.tankCapacity),
       sortOrder: sortOrder ?? this.sortOrder,

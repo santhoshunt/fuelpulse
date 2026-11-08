@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
+import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../utils/appearance_prefs.dart';
+import '../utils/mileage_bands.dart';
 import '../utils/page_routes.dart';
+import '../utils/vehicle_manager.dart';
 import 'appearance_screen.dart';
 import 'import_export_screen.dart';
+import 'mileage_ranges_screen.dart';
 import 'pumps_screen.dart';
 import 'service_types_screen.dart';
 import 'workshops_screen.dart';
@@ -58,6 +62,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// mirrors them.
   Future<void> _onDataChanged({bool themeChanged = false}) async {
     if (themeChanged) await reloadAppearance();
+    // A wipe removes services whose reminders are still set.
+    await ServiceReminders.instance.rescheduleAll();
     if (!mounted) return;
     setState(() => _reloadToken++);
     await _loadCounts();
@@ -65,6 +71,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _onRestored(bool replaced) =>
       _onDataChanged(themeChanged: replaced);
+
+  /// Mileage or cost ranges for the active vehicle, saved on Done.
+  Future<void> _ranges({required bool cost}) async {
+    final v = await loadActiveVehicle();
+    if (!mounted) return;
+    final limits = await Navigator.push<List<double>>(
+      context,
+      SmoothPageRoute(
+        page: MileageRangesScreen(
+          vehicleName: v.name,
+          type: v.type,
+          cost: cost,
+          limits: cost ? costBandsFor(v).limits : bandsFor(v).limits,
+        ),
+      ),
+    );
+    if (limits == null) return;
+    await DatabaseHelper().updateVehicle(cost
+        ? v.copyWith(costBands: limits)
+        : v.copyWith(mileageBands: limits));
+  }
 
   Future<void> _open(Widget page) async {
     await Navigator.push(context, SmoothPageRoute(page: page));
@@ -120,6 +147,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: 'Service types',
                 trailing: Text('$_typeCount', style: value),
                 onTap: () => _open(const ServiceTypesScreen()),
+              ),
+            ]),
+            const SizedBox(height: 32),
+            sectionHeader('Grading'),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
+              child: Text(
+                  "For the active vehicle. A fill-up's grade is the lower of "
+                  'its mileage and cost per km grades.',
+                  style: TextStyle(color: colors.textSecondary, fontSize: 12)),
+            ),
+            settingsGroup([
+              SettingsRow(
+                icon: Icons.speed,
+                label: 'Mileage ranges',
+                onTap: () => _ranges(cost: false),
+              ),
+              SettingsRow(
+                icon: Icons.currency_rupee,
+                label: 'Cost per km ranges',
+                onTap: () => _ranges(cost: true),
               ),
             ]),
             const SizedBox(height: 32),

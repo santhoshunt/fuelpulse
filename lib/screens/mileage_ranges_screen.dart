@@ -5,18 +5,23 @@ import '../theme/app_colors.dart';
 import '../utils/mileage_bands.dart';
 import '../widgets/vehicle_picker.dart' show vehicleTypeLabel;
 
-/// The five km/L bands for one vehicle: a preview bar, one row per band,
-/// and a reset to the type's defaults. Done returns the four limits.
+/// The five bands for one vehicle, by km/L or, with [cost], by ₹ per km: a
+/// preview bar, one row per band, and a reset to the type's defaults. Done
+/// returns the four limits (ascending for km/L, descending for ₹/km).
 class MileageRangesScreen extends StatefulWidget {
   final String vehicleName;
   final VehicleType type;
   final List<double> limits;
+
+  /// Cost per km ranges: lower is better, so the limits run downwards.
+  final bool cost;
 
   const MileageRangesScreen({
     super.key,
     required this.vehicleName,
     required this.type,
     required this.limits,
+    this.cost = false,
   });
 
   @override
@@ -26,34 +31,68 @@ class MileageRangesScreen extends StatefulWidget {
 class _MileageRangesScreenState extends State<MileageRangesScreen> {
   late List<double> _limits = List.of(widget.limits);
 
-  static String _n(double v) =>
-      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+  bool get _cost => widget.cost;
 
-  String _range(int band) => switch (band) {
-        0 => 'below ${_n(_limits[0])} km/L',
-        4 => '${_n(_limits[3])} and above',
-        _ => '${_n(_limits[band - 1])} to ${_n(_limits[band])}',
+  String _n(double v) {
+    final s = v == v.roundToDouble()
+        ? v.toStringAsFixed(0)
+        : v.toStringAsFixed(_cost ? 2 : 1);
+    return _cost ? '₹$s' : s;
+  }
+
+  String _range(int band) {
+    final l = _limits;
+    if (_cost) {
+      return switch (band) {
+        0 => 'above ${_n(l[0])}/km',
+        4 => 'up to ${_n(l[3])}/km',
+        _ => '${_n(l[band])} to ${_n(l[band - 1])}',
       };
+    }
+    return switch (band) {
+      0 => 'below ${_n(l[0])} km/L',
+      4 => '${_n(l[3])} and above',
+      _ => '${_n(l[band - 1])} to ${_n(l[band])}',
+    };
+  }
 
-  /// Each band edits the limit it ends at; Great edits where it starts.
+  /// km/L: each band edits the limit it ends at; Great edits where it
+  /// starts. ₹/km: each band edits the cost above which it applies; Great
+  /// edits Good's.
   Future<void> _edit(int band) async {
     final i = band.clamp(0, 3);
-    final lo = i == 0 ? 0.0 : _limits[i - 1];
-    final hi = i == 3 ? double.infinity : _limits[i + 1];
-    final controller = TextEditingController(text: _n(_limits[i]));
+    final double lo;
+    final double hi;
+    if (_cost) {
+      lo = i == 3 ? 0.0 : _limits[i + 1];
+      hi = i == 0 ? double.infinity : _limits[i - 1];
+    } else {
+      lo = i == 0 ? 0.0 : _limits[i - 1];
+      hi = i == 3 ? double.infinity : _limits[i + 1];
+    }
+    final controller =
+        TextEditingController(text: _n(_limits[i]).replaceAll('₹', ''));
     String? error;
+    final title = _cost
+        ? (band == 4
+            ? 'Great is up to'
+            : '${MileageBands.names[band]} is above')
+        : (band == 4
+            ? 'Great starts at'
+            : '${MileageBands.names[band]} ends at');
     final value = await showDialog<double>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) => AlertDialog(
-          title: Text(band == 4
-              ? 'Great starts at'
-              : '${MileageBands.names[band]} ends at'),
+          title: Text(title),
           content: TextField(
             controller: controller,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(suffixText: 'km/L', errorText: error),
+            decoration: InputDecoration(
+                prefixText: _cost ? '₹' : null,
+                suffixText: _cost ? 'per km' : 'km/L',
+                errorText: error),
           ),
           actions: [
             TextButton(
@@ -86,7 +125,7 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
     final typeName = vehicleTypeLabel(widget.type).toLowerCase();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mileage ranges'),
+        title: Text(_cost ? 'Cost per km ranges' : 'Mileage ranges'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, _limits),
@@ -164,13 +203,18 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-              'Tap a band to change its limit. These colours mark km/L on '
-              'the Fuel list and the refill page.',
+              _cost
+                  ? 'Cost per km is the price per litre divided by km/L. A '
+                      "fill-up's grade is the lower of its mileage and cost "
+                      'grades.'
+                  : 'Tap a band to change its limit. A fill-up\'s grade is the '
+                      'lower of its mileage and cost grades.',
               style: TextStyle(color: colors.textSecondary, fontSize: 13)),
           const SizedBox(height: 20),
           OutlinedButton(
-            onPressed: () => setState(
-                () => _limits = List.of(defaultBandsFor(widget.type).limits)),
+            onPressed: () => setState(() => _limits = List.of(_cost
+                ? defaultCostBandsFor(widget.type).limits
+                : defaultBandsFor(widget.type).limits)),
             style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48)),
             child: Text('Reset to $typeName defaults'),
