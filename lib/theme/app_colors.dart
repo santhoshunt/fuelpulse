@@ -80,7 +80,9 @@ class AppColors extends ThemeExtension<AppColors> {
       textPrimary: dark ? const Color(0xFFF5F7FA) : const Color(0xFF1C1B1A),
       textSecondary: dark ? const Color(0xFF9AA6B8) : const Color(0xFF6B6660),
       primary: primary,
-      onPrimary: primary.computeLuminance() > 0.35
+      // Whichever of white or near-black contrasts more: the two give the
+      // same ratio at a luminance of about 0.18.
+      onPrimary: primary.computeLuminance() > 0.18
           ? const Color(0xFF0B0D12)
           : Colors.white,
       primaryTint: Color.alphaBlend(primary.withValues(alpha: 0.12), card),

@@ -1,19 +1,20 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import '../utils/appearance_prefs.dart';
+import '../utils/page_routes.dart';
+import 'appearance_screen.dart';
+import 'import_export_screen.dart';
 import 'settings/about_section.dart';
 import 'settings/danger_section.dart';
-import 'settings/data_section.dart';
-import 'settings/drive_section.dart';
 import 'settings/lists_section.dart';
 import 'settings/settings_widgets.dart';
 import 'settings/vehicles_section.dart';
 
 export 'settings/restore_mode_dialog.dart' show showRestoreModeDialog;
 
-/// Settings is a column of independent sections, one file each under
-/// settings/.
+/// The Settings tab: Vehicles and Lists inline, Data and Appearance as rows
+/// that open their own pages, then About and Delete all data. Each section
+/// lives in its own file under settings/.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -39,37 +40,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _onRestored(bool replaced) =>
       _onDataChanged(themeChanged: replaced);
 
+  void _open(Widget page) =>
+      Navigator.push(context, SmoothPageRoute(page: page));
+
+  static const _modeNames = {
+    ThemeMode.light: 'Light',
+    ThemeMode.dark: 'Dark',
+    ThemeMode.system: 'System',
+  };
+
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final value = TextStyle(color: colors.textSecondary, fontSize: 15);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        bottom: false,
+        // Built in full, not lazily: a short page, and an expanded section
+        // at the bottom must exist before it is scrolled to.
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+          child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text('Settings',
+                style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5)),
+            const SizedBox(height: 20),
             VehiclesSection(key: ValueKey('vehicles$_reloadToken')),
             const SizedBox(height: 32),
             ListsSection(key: ValueKey('lists$_reloadToken')),
             const SizedBox(height: 32),
-            DataSection(onRestored: _onRestored),
+            sectionHeader('Data'),
+            const SizedBox(height: 12),
+            settingsGroup([
+              SettingsRow(
+                icon: Icons.import_export,
+                label: 'Import and export',
+                onTap: () =>
+                    _open(ImportExportScreen(onRestored: _onRestored)),
+              ),
+            ]),
             const SizedBox(height: 32),
-
-            // ── Google Drive Backup (Android only) ───────
-            if (!kIsWeb && Platform.isAndroid) ...[
-              sectionHeader('Google Drive Backup'),
-              const SizedBox(height: 12),
-              DriveBackupSection(onRestored: _onRestored),
-              const SizedBox(height: 32),
-            ],
-
+            sectionHeader('Appearance'),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<Appearance>(
+              valueListenable: appearance,
+              builder: (context, a, _) => settingsGroup([
+                SettingsRow(
+                  icon: Icons.brightness_6_outlined,
+                  label: 'Theme',
+                  trailing: Text(_modeNames[a.mode]!, style: value),
+                  onTap: () => _open(const AppearanceScreen()),
+                ),
+                SettingsRow(
+                  icon: Icons.palette_outlined,
+                  label: 'Colour palette',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(colors: [
+                            a.palette.primary,
+                            a.palette.primary,
+                            a.palette.secondary,
+                          ], stops: const [0, 0.6, 0.6]),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(a.palette.name, style: value),
+                    ],
+                  ),
+                  onTap: () => _open(const AppearanceScreen()),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 32),
             AboutSection(),
             const SizedBox(height: 32),
             DangerSection(onDeleted: _onDataChanged),
-            const SizedBox(height: 40),
           ],
+          ),
         ),
       ),
     );

@@ -1,17 +1,89 @@
 import 'package:flutter/material.dart';
-import '../../utils/constants.dart';
+import '../../theme/app_colors.dart';
 
 /// Building blocks shared by the Settings sections.
 
 Widget sectionHeader(String title) {
-  return Text(
-    title,
-    style: const TextStyle(
-      color: kTextPrimary,
-      fontSize: 18,
-      fontWeight: FontWeight.bold,
+  return Builder(
+    builder: (context) => Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          color: AppColors.of(context).textSecondary,
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     ),
   );
+}
+
+/// One tappable row in a settings group: label, optional trailing value,
+/// chevron.
+class SettingsRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Widget? trailing;
+  final VoidCallback onTap;
+
+  const SettingsRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.trailing,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: colors.primary),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(color: colors.textPrimary, fontSize: 16)),
+              ),
+              ?trailing,
+              Icon(Icons.chevron_right, color: colors.textSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A card of [SettingsRow]s with dividers between them.
+Widget settingsGroup(List<Widget> rows) {
+  return Builder(builder: (context) {
+    final colors = AppColors.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              Divider(
+                  height: 1,
+                  indent: 50,
+                  endIndent: 16,
+                  color: colors.cardBorder),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  });
 }
 
 void showSettingsSnack(BuildContext context, String msg) {
@@ -30,17 +102,15 @@ Widget editableListCard({
   required void Function(String) onDelete,
   Widget Function(String)? leadingBuilder,
 }) {
-  return Container(
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.04),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-    ),
+  return Builder(builder: (context) {
+  final colors = AppColors.of(context);
+  return Card(
+    margin: EdgeInsets.zero,
     child: Column(
       children: [
         for (var i = 0; i < items.length; i++) ...[
           if (i > 0)
-            Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+            Divider(height: 1, color: colors.cardBorder),
           Padding(
             padding: const EdgeInsets.only(left: 16),
             child: Row(
@@ -53,7 +123,7 @@ Widget editableListCard({
                   child: Text(
                     items[i],
                     style:
-                        const TextStyle(color: kTextPrimary, fontSize: 14),
+                        TextStyle(color: colors.textPrimary, fontSize: 14),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -67,8 +137,8 @@ Widget editableListCard({
                   icon: Icon(Icons.delete_outline,
                       size: 18,
                       color: items.length > 1
-                          ? kDanger.withValues(alpha: 0.7)
-                          : kTextMuted.withValues(alpha: 0.4)),
+                          ? colors.danger.withValues(alpha: 0.7)
+                          : colors.textSecondary.withValues(alpha: 0.4)),
                   onPressed:
                       items.length > 1 ? () => onDelete(items[i]) : null,
                   visualDensity: VisualDensity.compact,
@@ -77,7 +147,7 @@ Widget editableListCard({
             ),
           ),
         ],
-        Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+        Divider(height: 1, color: colors.cardBorder),
         TextButton.icon(
           onPressed: onAdd,
           icon: const Icon(Icons.add, size: 18),
@@ -86,6 +156,7 @@ Widget editableListCard({
       ],
     ),
   );
+  });
 }
 
 Widget actionCard({
@@ -94,28 +165,29 @@ Widget actionCard({
   required VoidCallback onTap,
   required Color accent,
 }) {
-  return InkWell(
+  return Builder(builder: (context) {
+  final colors = AppColors.of(context);
+  return Card(
+    margin: EdgeInsets.zero,
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(14),
-    child: Container(
+    child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
       child: Column(
         children: [
           Icon(icon, color: accent, size: 28),
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(color: kTextSecondary, fontSize: 13),
+            style: TextStyle(color: colors.textSecondary, fontSize: 13),
           ),
         ],
       ),
     ),
+    ),
   );
+  });
 }
 
 /// Confirm dialog shared by the fuel type and pump brand deletes.
@@ -133,7 +205,8 @@ Future<bool> confirmListDelete(
         ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-                backgroundColor: kDanger, foregroundColor: Colors.white),
+                backgroundColor: AppColors.of(ctx).danger,
+                foregroundColor: Colors.white),
             child: const Text('Delete')),
       ],
     ),

@@ -76,7 +76,6 @@ void main() {
       'Vehicles',
       'Fuel Types',
       'Pump Brands',
-      'Data Management',
       'About',
       'Danger Zone',
     ]) {
@@ -84,6 +83,9 @@ void main() {
           scrollable: _page);
       expect(find.text(header), findsOneWidget, reason: header);
     }
+    // Backups and CSV moved to their own page.
+    await _tapVisible(tester, find.text('Import and export'));
+    expect(find.text('Data Management'), findsOneWidget);
   });
 
   testWidgets('adds and renames a fuel type', (tester) async {
