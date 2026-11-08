@@ -1,7 +1,4 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
@@ -17,6 +14,7 @@ import '../widgets/add_fuel_type_dialog.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/mode_switch.dart';
 import '../widgets/option_picker.dart';
+import 'scan_photos_screen.dart';
 
 /// Add or edit a fill-up. One form serves both so the fields, cost sync and
 /// pickers stay identical between the two flows.
@@ -28,7 +26,10 @@ class EntryFormScreen extends StatefulWidget {
   /// uses the log's own vehicle.
   final String? vehicleId;
 
-  const EntryFormScreen({super.key, this.logId, this.vehicleId})
+  /// Photo reads to fill a new fill-up with, from [ScanPhotosScreen].
+  final ScanOutcome? prefill;
+
+  const EntryFormScreen({super.key, this.logId, this.vehicleId, this.prefill})
       : assert(logId != null || vehicleId != null,
             'Adding a fill-up needs the vehicle it belongs to');
 
@@ -90,14 +91,12 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   // verify.
   late String _lastCostEdited = _isEdit ? 'total' : 'price';
 
-  // Photo pre-fill. ML Kit only runs on the phone, so the scan panel is
-  // hidden elsewhere (and in widget tests). The scanner is created on first
-  // use so an unused form never opens the recogniser.
-  static bool get _scanSupported =>
-      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
-  PhotoScanner? _scanner;
-  bool _scanning = false;
+  // Photo pre-fill: what the last scan read, and the notes it left.
   final List<ScanResult> _scans = [];
+  final List<String> _scanNotes = [];
+  int _scanFilled = 0;
+  bool _whenFromPhoto = false;
+  bool _suggestionUsed = false;
   // Marks the fields a photo filled until the user edits them.
   bool _odoFromPhoto = false;
   bool _fuelFromPhoto = false;
@@ -136,6 +135,9 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           _selectedBrand = brands.first;
         }
       });
+      // After the base odometer is known: a TRIP read needs it.
+      final prefill = widget.prefill;
+      if (prefill != null && !prefill.isEmpty) _applyOutcome(prefill);
     } catch (e) {
       debugPrint('Error loading last entry: $e');
     }
@@ -195,64 +197,54 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     _notesController.dispose();
     _priceController.dispose();
     _costController.dispose();
-    _scanner?.close();
     super.dispose();
   }
 
-  Future<void> _scanPhoto(ScanKind kind) async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Take photo'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from gallery'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _openScan() async {
+    final outcome = await Navigator.push<ScanOutcome>(
+      context,
+      MaterialPageRoute(
+          builder: (_) => ScanPhotosScreen(lastOdometer: _baseOdometer)),
     );
-    if (source == null) return;
-    final photo = await ImagePicker()
-        .pickImage(source: source, maxWidth: 2400, imageQuality: 92);
-    if (photo == null || !mounted) return;
-
-    setState(() => _scanning = true);
-    try {
-      final result = await (_scanner ??= PhotoScanner())
-          .scan(photo.path, kind, lastOdometer: _baseOdometer);
-      if (!mounted) return;
-      String? warning;
-      setState(() {
-        _scans
-          ..removeWhere((s) => s.kind == kind)
-          ..add(result);
-        warning = _applyScan(result);
-      });
-      if (warning != null) _showSnack(warning!);
-    } catch (e) {
-      debugPrint('Photo scan failed: $e');
-      if (mounted) _showSnack('Could not read the photo: $e');
-    } finally {
-      if (mounted) setState(() => _scanning = false);
+    if (outcome != null && !outcome.isEmpty && mounted) {
+      _applyOutcome(outcome);
     }
   }
 
+  /// Copies every read of a scan into the form and sums up what it did.
+  void _applyOutcome(ScanOutcome o) {
+    final photoTime = o.photoTime;
+    if (photoTime != null) _setWhen(photoTime);
+    setState(() {
+      _scans
+        ..clear()
+        ..addAll([o.odometer, o.pump].whereType<ScanResult>());
+      _scanNotes.clear();
+      _suggestionUsed = false;
+      _whenFromPhoto = photoTime != null;
+      for (final r in _scans) {
+        final note = _applyScan(r);
+        if (note != null) _scanNotes.add(note);
+      }
+      final p = o.pump?.pump;
+      _scanFilled = (_odoFromPhoto ? 1 : 0) +
+          (_fuelFromPhoto ? 3 : (p != null && p.rateOnly ? 1 : 0)) +
+          (photoTime != null ? 1 : 0);
+      if (p != null && p.found && p.corrections == 0) {
+        _scanNotes.insert(
+            0,
+            'Pump numbers agree: ${p.litres!.toStringAsFixed(2)} L × '
+            '₹${p.rate!.toStringAsFixed(2)} = ₹${p.amount!.toStringAsFixed(2)}.');
+      }
+    });
+  }
   /// Copies a scan into the form. Returns a message when nothing could be
   /// filled. Called inside setState.
   String? _applyScan(ScanResult r) {
     if (r.kind == ScanKind.odometer) {
       final o = r.odometer!;
       if (o.value == null) {
-        return '${r.summary}. Enter it by hand, or tap Report to send the details.';
+        return '${r.summary}. Enter it by hand.';
       }
       if (o.isTrip) {
         if (_baseOdometer == null) {
@@ -265,6 +257,12 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       }
       _odoController.text = '${o.value}';
       _odoFromPhoto = true;
+      if (o.isTrip) {
+        return 'The photo showed ${o.label}, which counts distance since the '
+            'last refill, so the form switched to KM Travelled. Odometer '
+            'becomes $_baseOdometer + ${o.value} = '
+            '${_baseOdometer! + o.value!} km.';
+      }
       return null;
     }
     final p = r.pump!;
@@ -272,12 +270,17 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       // Through the normal listener, so a litres value already typed
       // recomputes the total.
       _priceController.text = p.rate!.toStringAsFixed(2);
+      if (pumpSuggestion(p) != null) {
+        return 'Only the rate was read for sure: ₹${p.rate!.toStringAsFixed(2)}/L. '
+            'Check this, under the price, works out the litres.';
+      }
       return 'Only the rate was read: ₹${p.rate!.toStringAsFixed(2)}/L. '
           'Enter litres or the total and the other fills in.';
     }
     if (!p.found) {
-      return "The pump numbers didn't agree, so nothing was filled. "
-          'Tap Report to send the details.';
+      return pumpSuggestion(p) == null
+          ? "The pump numbers couldn't be read. Enter them by hand."
+          : "The pump numbers didn't agree, so nothing was filled.";
     }
     // Fill all three without the cost listeners recomputing each other.
     _syncingCost = true;
@@ -305,84 +308,144 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     await r.share(version);
   }
 
-  Widget _buildScanPanel() {
-    final accent = Theme.of(context).colorScheme.primary;
+  /// Opens the scan screen; shown when adding, on phones only.
+  Widget _buildScanCard(AppColors colors) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _openScan,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: colors.primaryTint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.photo_camera_outlined, color: colors.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Scan photos to fill',
+                        style: TextStyle(
+                            color: colors.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600)),
+                    Text('Odometer and pump display',
+                        style: TextStyle(
+                            color: colors.textSecondary, fontSize: 13)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colors.textSecondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// What the last scan filled, with a Report button per photo.
+  Widget _buildScanSummary(AppColors colors) {
+    final photos = _scans.length;
+    final ok = _scanFilled > 0;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.35)),
+        color: colors.primaryTint,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Fill from photos',
+          Text(
+              ok
+                  ? 'Filled $_scanFilled ${_scanFilled == 1 ? 'field' : 'fields'} '
+                      'from $photos ${photos == 1 ? 'photo' : 'photos'}'
+                  : 'Nothing could be filled from the '
+                      '${photos == 1 ? 'photo' : 'photos'}',
               style: TextStyle(
-                  color: kTextPrimary,
+                  color: colors.textPrimary,
                   fontSize: 15,
                   fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
-          const Text('Read on your phone; nothing is uploaded.',
-              style: TextStyle(color: kTextMuted, fontSize: 12)),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed:
-                      _scanning ? null : () => _scanPhoto(ScanKind.odometer),
-                  icon: const Icon(Icons.speed, size: 18),
-                  label: const Text('Odometer'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _scanning ? null : () => _scanPhoto(ScanKind.pump),
-                  icon: const Icon(Icons.local_gas_station, size: 18),
-                  label: const Text('Pump display'),
-                ),
-              ),
-            ],
-          ),
-          if (_scanning) ...[
-            const SizedBox(height: 10),
-            const LinearProgressIndicator(),
+          for (final n in _scanNotes) ...[
+            const SizedBox(height: 4),
+            Text(n, style: TextStyle(color: colors.textSecondary, fontSize: 13)),
           ],
-          for (final s in _scans) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                  _scanFilled(s)
-                      ? Icons.check_circle_outline
-                      : Icons.error_outline,
-                  size: 18,
-                  color: _scanFilled(s) ? accent : kDanger,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(s.summary,
-                      style:
-                          const TextStyle(color: kTextSecondary, fontSize: 13)),
-                ),
+          if (ok) ...[
+            const SizedBox(height: 4),
+            Text('Check the marked fields, then save.',
+                style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+          ],
+          Wrap(
+            children: [
+              for (final s in _scans)
                 TextButton(
                   onPressed: () => _shareScanReport(s),
-                  child: const Text('Report'),
+                  child: Text(s.kind == ScanKind.odometer
+                      ? 'Report odometer read'
+                      : 'Report pump read'),
                 ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ],
       ),
     );
   }
 
-  bool _scanFilled(ScanResult s) => s.kind == ScanKind.odometer
-      ? s.odometer!.value != null
-      : s.pump!.found || s.pump!.rateOnly;
-
+  /// When the pump numbers didn't agree: amount ÷ rate, offered as litres.
+  Widget? _buildPumpCheck(AppColors colors) {
+    if (_suggestionUsed) return null;
+    final pump = _scans.where((s) => s.kind == ScanKind.pump).firstOrNull;
+    final s = pump == null ? null : pumpSuggestion(pump.pump!);
+    if (s == null) return null;
+    final litres = s.litres.toStringAsFixed(2);
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.warning.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Check this',
+              style: TextStyle(
+                  color: colors.warning,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(
+              "The pump numbers didn't agree. If the amount and rate are "
+              'right, ₹${s.amount.toStringAsFixed(2)} ÷ '
+              '₹${s.rate.toStringAsFixed(2)} = $litres L.',
+              style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+          const SizedBox(height: 8),
+          FilledButton.tonal(
+            onPressed: () => setState(() {
+              _syncingCost = true;
+              _litersController.text = litres;
+              _priceController.text = s.rate.toStringAsFixed(2);
+              _costController.text = s.amount.toStringAsFixed(2);
+              _syncingCost = false;
+              _lastCostEdited = 'total';
+              _fuelFromPhoto = true;
+              _suggestionUsed = true;
+            }),
+            child: Text('Use $litres L'),
+          ),
+        ],
+      ),
+    );
+  }
   void _onPriceChanged() {
     if (_syncingCost) return;
     _lastCostEdited = 'price';
@@ -660,6 +723,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
         context: context, initialTime: TimeOfDay.fromDateTime(_when));
     if (!mounted) return;
     final t = time ?? TimeOfDay.fromDateTime(_when);
+    _whenFromPhoto = false;
     _setWhen(DateTime(date.year, date.month, date.day, t.hour, t.minute));
   }
 
@@ -731,9 +795,10 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_scanSupported && !_isEdit) ...[
-                _buildScanPanel(),
-                const SizedBox(height: 4),
+              if (photoScanSupported && !_isEdit) _buildScanCard(colors),
+              if (_scans.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildScanSummary(colors),
               ],
 
               _section('When', colors),
@@ -746,6 +811,11 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   style: TextStyle(color: colors.textPrimary, fontSize: 16),
                 ),
               ),
+              if (_whenFromPhoto)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Text('Photo time, check it', style: note),
+                ),
 
               _section('Reading', colors),
               ModeSwitch(
@@ -886,6 +956,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   ),
                 ],
               ),
+              ?_buildPumpCheck(colors),
               const SizedBox(height: 12),
               Card(
                 margin: EdgeInsets.zero,

@@ -14,6 +14,7 @@ import '../widgets/brand_logo.dart';
 import '../widgets/vehicle_picker.dart';
 import 'entry_form_screen.dart';
 import 'refill_detail_screen.dart';
+import 'scan_photos_screen.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
@@ -127,6 +128,20 @@ class _FuelListScreenState extends State<FuelListScreen> {
     if (v != null) _open(EntryFormScreen(vehicleId: v.id));
   }
 
+  /// Scan first, then the form filled from what was read. Back on the scan
+  /// screen opens nothing; Skip opens a blank form.
+  Future<void> _scan() async {
+    final v = _vehicle;
+    if (v == null) return;
+    final last = await _db.getLastLog(v.id);
+    if (!mounted) return;
+    final outcome = await Navigator.push<ScanOutcome>(context,
+        SmoothPageRoute(page: ScanPhotosScreen(lastOdometer: last?.odometer)));
+    if (outcome == null || !mounted) return;
+    await _open(EntryFormScreen(
+        vehicleId: v.id, prefill: outcome.isEmpty ? null : outcome));
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
@@ -165,9 +180,9 @@ class _FuelListScreenState extends State<FuelListScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            // The form opens with its photo scan card at the top.
-            round(Icons.photo_camera_outlined, 'Scan photos to add a refill',
-                _add),
+            if (photoScanSupported)
+              round(Icons.photo_camera_outlined, 'Scan photos to add a refill',
+                  _scan),
             round(Icons.add, 'Add refill', _add),
           ],
         ),

@@ -69,6 +69,30 @@ class PumpRead {
 const kMinRate = 60.0;
 const kMaxRate = 200.0;
 
+/// A fill to offer when the pump numbers didn't agree: the rate (read, or
+/// the only number in the rate range), the largest other number as the
+/// amount, and litres = amount ÷ rate. Null when the read agreed, or no
+/// rate or amount stands out. All three come back so the form can set them
+/// together without the total drifting from the rounded litres.
+({double litres, double rate, double amount})? pumpSuggestion(PumpRead r) {
+  if (r.found) return null;
+  var rate = r.rate;
+  if (rate == null) {
+    final inRange =
+        r.numbers.where((n) => n >= kMinRate && n <= kMaxRate).toSet();
+    if (inRange.length != 1) return null;
+    rate = inRange.first;
+  }
+  final bigger = r.numbers.where((n) => n > rate! + 0.001);
+  if (bigger.isEmpty) return null;
+  final amount = bigger.reduce(max);
+  final litres = double.parse((amount / rate).toStringAsFixed(2));
+  return (litres: litres, rate: rate, amount: amount);
+}
+
+/// Litres from [pumpSuggestion], or null.
+double? suggestLitres(PumpRead r) => pumpSuggestion(r)?.litres;
+
 /// Digits a seven-segment display is commonly misread as, from real scans:
 /// 127.43 read as 121.43 (7 as 1). A thin 1 can also vanish entirely
 /// (11.38 read as 138), which [_digitVariants] covers by inserting a 1.
