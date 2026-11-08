@@ -5,17 +5,22 @@ import 'package:intl/intl.dart' show NumberFormat;
 
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
+import '../models/pump.dart';
+import '../models/service_record.dart';
+import '../models/service_type.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/period_filter.dart';
+import '../utils/service_schedule.dart';
 import '../utils/trend_calculator.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/month_bar_chart.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/trend_chart.dart';
+import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
@@ -44,6 +49,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   int _spendMonths = 6;
   int _mileageMonths = 6;
   int _brandMonths = 6;
+  int _serviceMonths = 12;
+  bool _serviceView = false;
+  Map<String, Pump> _pumps = const {};
+  List<ServiceRecord> _services = const [];
+  Map<String, ServiceType> _types = const {};
+  int? _odometer;
 
   DateTime get _now => widget.now ?? DateTime.now();
 
@@ -72,10 +83,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Future<void> _load() async {
     final vehicle = await loadActiveVehicle();
     final chrono = await _db.getAllLogsChrono(vehicle.id);
+    final pumps = await _db.getPumps();
+    final services = await _db.getServices(vehicle.id);
+    final types = await _db.getServiceTypes();
+    final odo = await latestOdometer(vehicle.id);
     if (!mounted) return;
     setState(() {
       _vehicle = vehicle;
       _chrono = chrono;
+      _pumps = {for (final p in pumps) p.id: p};
+      _services = services;
+      _types = {for (final t in types) t.id: t};
+      _odometer = odo;
       _loading = false;
     });
   }
@@ -103,13 +122,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           fontSize: 15,
                           fontWeight: FontWeight.w500)),
                   const SizedBox(height: 14),
-                  if (_chrono.isEmpty)
+                  PeriodSelector(
+                    months: _serviceView ? 1 : 0,
+                    options: const [0, 1],
+                    label: (v) => v == 0 ? 'Fuel' : 'Service',
+                    onChanged: (v) => setState(() => _serviceView = v == 1),
+                  ),
+                  const SizedBox(height: 14),
+                  if (_serviceView)
+                    ..._serviceCards(colors)
+                  else if (_chrono.isEmpty)
                     _notEnough(colors)
                   else ...[
                     _spendCard(colors),
                     const SizedBox(height: 14),
                     _mileageCard(),
-                    ..._brandCard(colors),
+                    ..._pumpCard(colors),
                     ..._gradeCard(colors),
                     const SizedBox(height: 14),
                     _totalsCard(colors),
@@ -218,23 +246,27 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  List<Widget> _brandCard(AppColors colors) {
-    final r = calculateBrandEfficiency(
-        logsInLastMonths(_chrono, _brandMonths, now: _now));
+  /// Km/L per pump, brand first, the best in the primary colour.
+  List<Widget> _pumpCard(AppColors colors) {
+    final r = calculateGroupedEfficiency(
+        logsInLastMonths(_chrono, _brandMonths, now: _now),
+        (l) => l.pumpId ?? '',
+        emptyKeyLabel: 'Unknown pump');
     final best = r.rankings.isEmpty ? 0.0 : r.rankings.first.weightedEfficiency;
+    final bestPump = r.rankings.isEmpty ? null : _pumps[r.rankings.first.label];
     return [
       const SizedBox(height: 14),
       _card([
         Row(
           children: [
-            Expanded(child: _cap('Brand comparison', colors)),
-            if (r.bestBrand != null)
+            Expanded(child: _cap('Pump comparison', colors)),
+            if (r.rankings.isNotEmpty)
               Text.rich(TextSpan(
                   text: 'Best: ',
                   style: TextStyle(color: colors.textSecondary, fontSize: 13),
                   children: [
                     TextSpan(
-                        text: r.bestBrand,
+                        text: bestPump?.brand ?? r.rankings.first.label,
                         style: TextStyle(
                             color: colors.textPrimary,
                             fontWeight: FontWeight.w600)),
@@ -251,63 +283,233 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           Text('Appears once a full-tank segment closes in this period.',
               style: TextStyle(color: colors.textSecondary, fontSize: 13))
         else
-          for (final b in r.rankings)
+          for (final g in r.rankings) _pumpRow(g, best, colors),
+      ]),
+    ];
+  }
+
+  Widget _pumpRow(GroupEfficiency g, double best, AppColors colors) {
+    final pump = _pumps[g.label];
+    final brand = pump?.brand ?? g.label;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        children: [
+          BrandLogo(brandName: brand, size: 32),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(brand,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: colors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    Text('${g.weightedEfficiency.toStringAsFixed(1)} km/L',
+                        style: TextStyle(
+                            color: colors.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: best > 0
+                        ? math.min(1.0, g.weightedEfficiency / best)
+                        : 0,
+                    minHeight: 6,
+                    color: g.weightedEfficiency == best
+                        ? colors.primary
+                        : colors.primarySoft,
+                    backgroundColor: colors.cardBorder,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                    [
+                      if (pump != null && pump.name.isNotEmpty) pump.name,
+                      '${g.fillCount} ${g.fillCount == 1 ? 'refill' : 'refills'}',
+                    ].join(' · '),
+                    style:
+                        TextStyle(color: colors.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Service ─────────────────────────────────────────────────────────
+
+  List<Widget> _serviceCards(AppColors colors) {
+    if (_services.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.only(top: 60),
+          child: Text('No services yet. Log one on the Service tab.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.textSecondary, fontSize: 14)),
+        ),
+      ];
+    }
+    final muted = TextStyle(color: colors.textSecondary, fontSize: 13);
+    final strong = TextStyle(
+        color: colors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600);
+
+    // Spend per month in the window.
+    final start = periodStart(_serviceMonths, now: _now);
+    final bars = <(DateTime, double)>[
+      for (var i = 0; i < _serviceMonths; i++)
+        (DateTime(start.year, start.month + i), 0.0),
+    ];
+    for (final s in _services) {
+      final at = DateTime.tryParse(s.timestamp);
+      if (at == null || s.cost == null || at.isBefore(start)) continue;
+      final i = (at.year - start.year) * 12 + at.month - start.month;
+      if (i < bars.length) bars[i] = (bars[i].$1, bars[i].$2 + s.cost!);
+    }
+    final windowSpend = bars.fold<double>(0, (a, b) => a + b.$2);
+
+    // A visit's cost split evenly across the types done.
+    final byType = <String, double>{};
+    for (final s in _services) {
+      final cost = s.cost;
+      if (cost == null || s.typeIds.isEmpty) continue;
+      for (final id in s.typeIds) {
+        final name = _types[id]?.name ?? 'Service';
+        byType[name] = (byType[name] ?? 0) + cost / s.typeIds.length;
+      }
+    }
+    final typeRows = byType.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final topType = typeRows.isEmpty ? 0.0 : typeRows.first.value;
+
+    // Running cost per km over everything driven.
+    final fuelPerKm = calculateCostStats(_chrono, now: _now).costPerKm;
+    final readings = [
+      for (final l in _chrono) l.odometer,
+      for (final s in _services) s.odometer,
+    ];
+    final span = readings.length < 2
+        ? 0
+        : readings.reduce(math.max) - readings.reduce(math.min);
+    final serviceSpend =
+        _services.fold<double>(0, (a, s) => a + (s.cost ?? 0));
+    final servicePerKm = span > 0 ? serviceSpend / span : null;
+
+    final upcoming = openSchedules(_services)
+        .map((r) => nextServiceFor([r], _odometer, now: _now))
+        .whereType<NextService>()
+        .toList()
+      ..sort((a, b) => (a.kmLeft ?? a.daysLeft! * 30)
+          .compareTo(b.kmLeft ?? b.daysLeft! * 30));
+
+    String perKm(double? v) => v == null ? '—' : '₹${v.toStringAsFixed(2)}';
+
+    return [
+      _card([
+        _head('Service spend', '₹${_grouped.format(windowSpend)}', colors),
+        const SizedBox(height: 10),
+        PeriodSelector(
+            months: _serviceMonths,
+            options: const [3, 6, 12],
+            onChanged: (m) => setState(() => _serviceMonths = m)),
+        const SizedBox(height: 12),
+        MonthBarChart(
+            bars: bars, formatValue: (v) => '₹${_grouped.format(v)}'),
+      ]),
+      if (typeRows.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        _card([
+          _cap('Spend by service type', colors),
+          const SizedBox(height: 12),
+          for (final e in typeRows)
             Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Row(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  BrandLogo(brandName: b.brand, size: 32),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(b.brand.isEmpty ? 'Unknown' : b.brand,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      color: colors.textPrimary,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600)),
-                            ),
-                            Text('${b.weightedEfficiency.toStringAsFixed(1)} km/L',
-                                style: TextStyle(
-                                    color: colors.textPrimary,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
-                          child: LinearProgressIndicator(
-                            value: best > 0
-                                ? math.min(1.0, b.weightedEfficiency / best)
-                                : 0,
-                            minHeight: 6,
-                            color: b.weightedEfficiency == best
-                                ? colors.primary
-                                : colors.primarySoft,
-                            backgroundColor: colors.cardBorder,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                            '${b.fillCount} ${b.fillCount == 1 ? 'refill' : 'refills'}',
-                            style: TextStyle(
-                                color: colors.textSecondary, fontSize: 12)),
-                      ],
+                  Row(
+                    children: [
+                      Expanded(child: Text(e.key, style: strong)),
+                      Text('₹${_grouped.format(e.value)}', style: strong),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: topType > 0 ? e.value / topType : 0,
+                      minHeight: 6,
+                      color: colors.primarySoft,
+                      backgroundColor: colors.cardBorder,
                     ),
                   ),
                 ],
               ),
             ),
+        ]),
+      ],
+      const SizedBox(height: 14),
+      _card([
+        _cap('Running cost per km', colors),
+        const SizedBox(height: 12),
+        for (final (label, v) in [
+          ('Fuel', fuelPerKm),
+          ('Service', servicePerKm),
+          (
+            'Total',
+            fuelPerKm == null && servicePerKm == null
+                ? null
+                : (fuelPerKm ?? 0) + (servicePerKm ?? 0)
+          ),
+        ])
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                    child: Text(label,
+                        style: label == 'Total' ? strong : muted.copyWith(fontSize: 15))),
+                Text(perKm(v), style: strong),
+              ],
+            ),
+          ),
       ]),
+      if (upcoming.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        _card([
+          _cap('Upcoming', colors),
+          const SizedBox(height: 12),
+          for (final n in upcoming)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                      child: Text(serviceTypeNames(n.record, _types),
+                          style: TextStyle(
+                              color: colors.textPrimary, fontSize: 15))),
+                  Text(dueText(n),
+                      style: TextStyle(
+                          color: n.overdue ? colors.danger : colors.textSecondary,
+                          fontSize: 14)),
+                ],
+              ),
+            ),
+        ]),
+      ],
     ];
   }
-
   List<Widget> _gradeCard(AppColors colors) {
     final r = calculateFuelTypeEfficiency(_chrono);
     if (r.rankings.isEmpty) return const [];

@@ -5,7 +5,8 @@
 //   flutter test tool/readme_screenshots_test.dart --update-goldens
 //
 // Output: screenshots/dashboard.png, dashboard_dark.png, fuel.png,
-// refill.png, add_fill_up.png, service.png, analytics.png, appearance.png.
+// refill.png, add_fill_up.png, service.png, analytics.png,
+// analytics_service.png, appearance.png.
 
 import 'dart:io';
 
@@ -24,6 +25,7 @@ import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/screens/app_shell.dart';
 import 'package:fuelpulse/theme/app_theme.dart';
 import 'package:fuelpulse/theme/palettes.dart';
+import 'package:fuelpulse/widgets/period_selector.dart';
 
 FuelLog _log(
   int n,
@@ -214,6 +216,10 @@ void main() {
       tab: 1, tap: find.byTooltip('Add refill')));
   testWidgets('service', (t) => capture(t, 'service', tab: 2));
   testWidgets('analytics', (t) => capture(t, 'analytics', tab: 3));
+  testWidgets('analytics service', (t) => capture(t, 'analytics_service',
+      tab: 3,
+      tap: find.descendant(
+          of: find.byType(PeriodSelector), matching: find.text('Service'))));
   testWidgets('appearance', (t) => capture(t, 'appearance',
       tab: 4, tap: find.text('Colour palette'), dark: true));
 }

@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 
-/// A row of period buttons (1M, 3M, 6M, 12M) for one Analytics card.
+/// A row of period buttons (1M, 3M, 6M, 12M) for one Analytics card, or of
+/// any other choices given a [label].
 class PeriodSelector extends StatelessWidget {
   final int months;
   final List<int> options;
   final ValueChanged<int> onChanged;
+
+  /// The text for each option; months ("6M") when null.
+  final String Function(int)? label;
 
   const PeriodSelector({
     super.key,
     required this.months,
     required this.options,
     required this.onChanged,
+    this.label,
   });
 
   @override
@@ -42,7 +47,7 @@ class PeriodSelector extends StatelessWidget {
                       color: m == months ? colors.card : Colors.transparent,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text('${m}M',
+                    child: Text(label?.call(m) ?? '${m}M',
                         style: TextStyle(
                             fontSize: 14,
                             color: m == months
