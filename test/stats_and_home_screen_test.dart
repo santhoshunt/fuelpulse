@@ -9,14 +9,11 @@ import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/screens/fuel_list_screen.dart';
-import 'package:fuelpulse/screens/stats_screen.dart';
+import 'package:fuelpulse/screens/analytics_screen.dart';
 import 'package:fuelpulse/utils/constants.dart';
 import 'package:fuelpulse/widgets/trend_chart.dart';
 
 final _db = DatabaseHelper();
-
-const _myVehicle = Vehicle(
-    id: kDefaultVehicleId, name: kDefaultVehicleName, createdAt: '');
 
 FuelLog _log(
   String id,
@@ -61,8 +58,11 @@ Future<void> _scrollTo(WidgetTester tester, Finder f) async {
 }
 
 const _kmEmpty = 'Trend appears after 2 completed full-tank segments.';
-const _costEmpty =
-    'Add price or total to fill-ups to see cost per km over time.';
+const _noBrands = 'Appears once a full-tank segment closes in this period.';
+
+/// Inside every seeded period: the 6-month windows start in March.
+Widget _analytics() =>
+    AnalyticsScreen(reload: ValueNotifier(0), now: DateTime(2026, 8, 15));
 
 void main() {
   setUpAll(() async {
@@ -77,41 +77,40 @@ void main() {
     await _db.resetToDefaultVehicle();
   });
 
-  group('StatsScreen', () {
+  group('AnalyticsScreen', () {
     testWidgets('no logs shows the not-enough-data message', (tester) async {
-      await _pumpScreen(tester, StatsScreen(vehicle: _myVehicle));
+      await _pumpScreen(tester, _analytics());
       expect(find.text('Not enough data'), findsOneWidget);
-      expect(find.text('Trends'), findsNothing);
+      expect(find.text('FUEL EXPENSES'), findsNothing);
     });
 
-    testWidgets('one segment shows both charts with their empty messages',
+    testWidgets('one segment shows the mileage chart with its empty message',
         (tester) async {
       await _seed(tester, [
         _log('a', '2026-06-01', 10000, 30),
         _log('b', '2026-06-15', 10500, 25),
       ]);
-      await _pumpScreen(tester, StatsScreen(vehicle: _myVehicle));
+      await _pumpScreen(tester, _analytics());
 
-      await _scrollTo(tester, find.text('Cost per km (₹)'));
-      expect(find.text('Trends'), findsOneWidget);
-      // Too few segments is the reason for both, so both say so.
-      expect(find.text(_kmEmpty), findsNWidgets(2));
-      expect(find.text(_costEmpty), findsNothing);
+      await _scrollTo(tester, find.text(_kmEmpty));
+      // Too few segments for a trend line.
+      expect(find.text(_kmEmpty), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('several priced segments draw both charts', (tester) async {
+    testWidgets('several priced segments draw the charts', (tester) async {
       await _seed(tester, [
         _log('a', '2026-06-01', 10000, 30, price: 100),
         _log('b', '2026-06-15', 10500, 25, price: 101),
         _log('c', '2026-07-01', 11100, 30, price: 102),
         _log('d', '2026-07-20', 11650, 28, price: 103),
       ]);
-      await _pumpScreen(tester, StatsScreen(vehicle: _myVehicle));
+      await _pumpScreen(tester, _analytics());
 
-      await _scrollTo(tester, find.text('Cost per km (₹)'));
+      // 3000 + 2525 + 3060 + 2884
+      expect(find.text('₹11,469'), findsWidgets);
+      await _scrollTo(tester, find.text('Fuel mileage (km/L)'));
       expect(find.text(_kmEmpty), findsNothing);
-      expect(find.text(_costEmpty), findsNothing);
       expect(
           find.descendant(
               of: find.byType(TrendChart), matching: find.byType(CustomPaint)),
@@ -119,29 +118,29 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('segments without prices draw km/L but not cost',
+    testWidgets('segments without prices draw km/L with no spend',
         (tester) async {
       await _seed(tester, [
         _log('a', '2026-06-01', 10000, 30),
         _log('b', '2026-06-15', 10500, 25),
         _log('c', '2026-07-01', 11100, 30),
       ]);
-      await _pumpScreen(tester, StatsScreen(vehicle: _myVehicle));
+      await _pumpScreen(tester, _analytics());
 
-      await _scrollTo(tester, find.text(_costEmpty));
+      expect(find.text('₹0'), findsWidgets);
+      await _scrollTo(tester, find.text('Fuel mileage (km/L)'));
       expect(find.text(_kmEmpty), findsNothing);
-      expect(find.text(_costEmpty), findsOneWidget);
     });
 
-    testWidgets('cost data without a completed segment hides Trends',
+    testWidgets('cost data without a completed segment shows spend only',
         (tester) async {
       await _seed(tester, [_log('a', '2026-06-01', 10000, 30, price: 100)]);
-      await _pumpScreen(tester, StatsScreen(vehicle: _myVehicle));
-      expect(find.text('Cost Analytics'), findsOneWidget);
-      expect(find.text('Trends'), findsNothing);
+      await _pumpScreen(tester, _analytics());
+      expect(find.text('FUEL EXPENSES'), findsOneWidget);
+      await _scrollTo(tester, find.text(_noBrands));
+      expect(find.text(_noBrands), findsOneWidget);
     });
   });
-
   group('TrendChart edge cases paint without errors', () {
     Future<void> pumpChart(WidgetTester tester, List<TrendPoint> points) async {
       await tester.pumpWidget(MaterialApp(
@@ -302,15 +301,15 @@ void main() {
       expect(find.text('Add Fill-up · Activa'), findsOneWidget);
     });
 
-    testWidgets('Statistics reads only its own vehicle', (tester) async {
+    testWidgets('Analytics reads only the active vehicle', (tester) async {
       await seedTwoVehicles(tester);
-      await _pumpScreen(tester, const StatsScreen(vehicle: bike));
+      SharedPreferences.setMockInitialValues({kActiveVehicleKey: 'bike'});
+      await _pumpScreen(tester, _analytics());
 
-      expect(find.text('Statistics · Activa'), findsOneWidget);
+      expect(find.text('Activa'), findsOneWidget);
       // The bike has one segment; the car's three must not leak in.
-      await _scrollTo(tester, find.text('Cost per km (₹)'));
-      expect(find.text(_kmEmpty), findsNWidgets(2));
+      await _scrollTo(tester, find.text(_kmEmpty));
+      expect(find.text(_kmEmpty), findsOneWidget);
       expect(find.text('HP'), findsNothing);
-    });
-  });
+    });  });
 }

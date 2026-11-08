@@ -20,7 +20,7 @@ import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/screens/entry_form_screen.dart';
 import 'package:fuelpulse/screens/fuel_list_screen.dart';
-import 'package:fuelpulse/screens/stats_screen.dart';
+import 'package:fuelpulse/screens/analytics_screen.dart';
 import 'package:fuelpulse/theme/app_theme.dart';
 import 'package:fuelpulse/theme/palettes.dart';
 
@@ -193,13 +193,13 @@ void main() {
   });
 
   testWidgets('stats', (tester) async {
-    await capture(tester, const StatsScreen(vehicle: _car), 'stats');
+    await capture(tester, AnalyticsScreen(reload: ValueNotifier(0)), 'stats');
   });
 
   testWidgets('stats trends', (tester) async {
-    await capture(tester, const StatsScreen(vehicle: _car), 'stats_trends',
+    await capture(tester, AnalyticsScreen(reload: ValueNotifier(0)), 'stats_trends',
         before: () async {
-      await tester.ensureVisible(find.text('Trends'));
+      await tester.ensureVisible(find.text('FUEL MILEAGE (KM/L)'));
       await tester.pumpAndSettle();
     });
   });

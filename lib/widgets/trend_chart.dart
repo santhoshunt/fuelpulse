@@ -30,12 +30,16 @@ class TrendChart extends StatelessWidget {
   /// Shown instead of the chart when there are fewer than 2 points.
   final String emptyMessage;
 
+  /// Shown under the title row, above the plot (a period selector).
+  final Widget? controls;
+
   const TrendChart({
     super.key,
     required this.title,
     required this.points,
     required this.formatValue,
     required this.emptyMessage,
+    this.controls,
   });
 
   @override
@@ -76,6 +80,7 @@ class TrendChart extends StatelessWidget {
                 ),
             ],
           ),
+          if (controls != null) ...[const SizedBox(height: 10), controls!],
           const SizedBox(height: 12),
           if (points.length < 2)
             Padding(

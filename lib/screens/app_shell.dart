@@ -2,18 +2,16 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import '../models/vehicle.dart';
 import '../services/drive_backup_service.dart';
 import '../services/update_downloader.dart';
 import '../services/update_installer.dart';
 import '../services/update_prefs.dart';
 import '../services/update_service.dart';
-import '../utils/vehicle_manager.dart';
 import '../widgets/update_banner.dart';
+import 'analytics_screen.dart';
 import 'dashboard_screen.dart';
 import 'fuel_list_screen.dart';
 import 'settings_screen.dart';
-import 'stats_screen.dart';
 
 /// The app's root: one tab per area over an [IndexedStack], so each tab
 /// keeps its scroll position. Start-up work that belongs to the app rather
@@ -30,13 +28,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// another tab). Tabs that show stored data listen and read it again.
   final _reload = ValueNotifier<int>(0);
   int _tab = 0;
-  Vehicle? _vehicle;
 
   @override
   void initState() {
     super.initState();
-    _loadVehicle();
-    _reload.addListener(_loadVehicle);
     // Scheduled Drive backup, fire-and-forget so it never blocks startup;
     // failures surface in Settings via DriveBackupService.lastError().
     // google_sign_in 6.x only has an Android implementation here.
@@ -61,11 +56,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _reload.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadVehicle() async {
-    final v = await loadActiveVehicle();
-    if (mounted) setState(() => _vehicle = v);
   }
 
   /// Android keeps the process in recents, so a launch is usually a resume:
@@ -154,7 +144,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final vehicle = _vehicle;
     return Scaffold(
       body: Column(
         children: [
@@ -164,16 +153,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               children: [
                 DashboardScreen(reload: _reload),
                 FuelListScreen(reload: _reload),
-                // Interim host until Analytics gets its own screen:
-                // rebuilt on reload to read again.
-                vehicle == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : ValueListenableBuilder<int>(
-                        valueListenable: _reload,
-                        builder: (_, r, _) => StatsScreen(
-                            key: ValueKey('stats${vehicle.id}$r'),
-                            vehicle: vehicle),
-                      ),
+                AnalyticsScreen(reload: _reload),
                 const SettingsScreen(),
               ],
             ),
