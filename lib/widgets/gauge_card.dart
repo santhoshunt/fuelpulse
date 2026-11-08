@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' show DateFormat;
 
 import '../theme/app_colors.dart';
 import 'lcd_odometer.dart';
@@ -19,9 +18,13 @@ class GaugeCard extends StatelessWidget {
   final double? tankLitres;
   final double? tankCapacity;
 
-  /// When the last refill was, for the tank row: the level is the one
-  /// right after it, not a live reading.
-  final DateTime? tankDate;
+  /// What [tankLitres] is ("Left now, about", "In the tank after the 16 Oct
+  /// refill") and the line under the bar.
+  final String? tankCaption;
+  final String? tankNote;
+
+  /// Shows an "Update reading" link under the tank.
+  final VoidCallback? onUpdateReading;
 
   /// Shown under the dial in place of the numbers when there are no logs.
   final String? emptyMessage;
@@ -36,7 +39,9 @@ class GaugeCard extends StatelessWidget {
     this.odometerTenths,
     this.tankLitres,
     this.tankCapacity,
-    this.tankDate,
+    this.tankCaption,
+    this.tankNote,
+    this.onUpdateReading,
     this.emptyMessage,
   });
 
@@ -175,7 +180,6 @@ class GaugeCard extends StatelessWidget {
   Widget _tank(AppColors colors, Color soft) {
     final cap = tankCapacity!;
     final level = tankLitres!.clamp(0, cap).toDouble();
-    final avg = averageKmL;
     final small = TextStyle(fontSize: 12, color: soft);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -183,13 +187,9 @@ class GaugeCard extends StatelessWidget {
         Row(
           children: [
             Expanded(
-                child: Text(
-                    tankDate == null
-                        ? 'In the tank after the last refill'
-                        : 'In the tank after the ${DateFormat('d MMM').format(tankDate!)} refill',
+                child: Text(tankCaption ?? 'In the tank after the last refill',
                     style: small)),
-            Text('${level.toStringAsFixed(1)} of ${_trim(cap)} L',
-                style: small),
+            Text('${level.toStringAsFixed(1)} of ${_trim(cap)} L', style: small),
           ],
         ),
         const SizedBox(height: 6),
@@ -202,17 +202,27 @@ class GaugeCard extends StatelessWidget {
             backgroundColor: Colors.white.withValues(alpha: 0.18),
           ),
         ),
-        if (avg != null && avg > 0) ...[
+        if (tankNote != null) ...[
           const SizedBox(height: 6),
-          Text(
-              'Enough for about ${(level * avg).round()} km from that refill '
-              'at your ${avg.toStringAsFixed(1)} km/L average',
-              style: small),
+          Text(tankNote!, style: small),
         ],
+        if (onUpdateReading != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onUpdateReading,
+              style: TextButton.styleFrom(
+                  foregroundColor: AppColors.gaugeInk,
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact),
+              child: const Text('Update odometer reading',
+                  style: TextStyle(
+                      decoration: TextDecoration.underline, fontSize: 13)),
+            ),
+          ),
       ],
     );
   }
-
   static String _trim(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
 

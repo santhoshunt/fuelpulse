@@ -10,6 +10,7 @@ import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
+import '../utils/odometer_reading.dart';
 import '../utils/page_routes.dart';
 import '../utils/service_schedule.dart';
 import '../utils/tank_level_calculator.dart';
@@ -42,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<SegmentTrendPoint> _trend = const [];
   double? _tankLevel;
   NextService? _next;
+  OdometerReading? _reading;
   Map<String, ServiceType> _types = const {};
   bool _loading = true;
 
@@ -75,6 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final cap = vehicle.tankCapacity ?? 0;
     final levels = calculateTankLevels(chrono, cap, eff);
     final services = await _db.getServices(vehicle.id);
+    final reading = await loadReading(vehicle.id);
     final types = await _db.getServiceTypes();
     final next = nextServiceFor(services, await latestOdometer(vehicle.id));
     if (!mounted) return;
@@ -87,6 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _trend = calculateSegmentTrend(chrono);
       _tankLevel = chrono.isEmpty ? null : levels[chrono.last.id];
       _next = next;
+      _reading = reading;
       _types = {for (final t in types) t.id: t};
       _loading = false;
     });
@@ -106,6 +110,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await setActiveVehicle(picked.id);
     // Every tab shows the active vehicle.
     widget.reload.value++;
+  }
+
+  /// Today's level from a reading taken after the last refill; without one,
+  /// the level right after that refill.
+  ({double litres, String caption, String note})? _tank(FuelLog? latest) {
+    final after = _tankLevel;
+    if (latest == null || after == null) return null;
+    final avg = _average;
+    final r = _reading;
+    if (r != null && avg != null && avg > 0) {
+      final left = (after - (r.km - latest.odometer) / avg).clamp(0.0, after);
+      return (
+        litres: left,
+        caption: 'Left now, about',
+        note: 'Enough for about  km, from your '
+            ' km reading on ',
+      );
+    }
+    final at = DateTime.tryParse(latest.timestamp);
+    return (
+      litres: after,
+      caption: at == null
+          ? 'In the tank after the last refill'
+          : 'In the tank after the  refill',
+      note: avg == null || avg <= 0
+          ? 'Add a reading to estimate what is left now'
+          : 'Enough for about  km from that refill. '
+              'Add a reading to estimate what is left now',
+    );
+  }
+
+  Future<void> _updateReading() async {
+    final v = _vehicle;
+    if (v == null) return;
+    if (await showOdometerDialog(context, vehicleId: v.id, vehicleName: v.name)) {
+      widget.reload.value++;
+    }
   }
 
   Future<void> _addFirst() async {
@@ -144,6 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
     final latest = _chrono.isEmpty ? null : _chrono.last;
+    final tank = _tank(latest);
     final trend = _trend.length > 12
         ? _trend.sublist(_trend.length - 12)
         : _trend;
@@ -156,10 +198,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         worst: values.isEmpty ? null : values.reduce(math.min),
         last: last,
         best: values.isEmpty ? null : values.reduce(math.max),
-        odometerKm: latest?.odometer,
-        tankLitres: _tankLevel,
+        odometerKm: _reading?.km ?? latest?.odometer,
+        tankLitres: tank?.litres,
+        tankCaption: tank?.caption,
+        tankNote: tank?.note,
+        onUpdateReading: _vehicle == null ? null : _updateReading,
         tankCapacity: _vehicle?.tankCapacity,
-        tankDate: latest == null ? null : DateTime.tryParse(latest.timestamp),
         emptyMessage: _chrono.isEmpty ? 'Add your first fill-up' : null,
       ),
       if (_next != null) ...[

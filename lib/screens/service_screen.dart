@@ -10,6 +10,7 @@ import '../models/vehicle.dart';
 import '../models/workshop.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
+import '../utils/odometer_reading.dart';
 import '../utils/page_routes.dart';
 import '../utils/service_schedule.dart';
 import '../utils/vehicle_manager.dart';
@@ -17,13 +18,16 @@ import 'service_form_screen.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
-/// The latest odometer known for a vehicle: from fill-ups or services.
+/// The latest odometer known for a vehicle: from fill-ups, services or a
+/// reading typed on the Dashboard or the Odometer widget.
 Future<int?> latestOdometer(String vehicleId) async {
   final db = DatabaseHelper();
   final log = await db.getLastLog(vehicleId);
   final services = await db.getServices(vehicleId);
+  final reading = await loadReading(vehicleId);
   final readings = [
     ?log?.odometer,
+    ?reading?.km,
     for (final s in services) s.odometer,
   ];
   return readings.isEmpty ? null : readings.reduce(math.max);
