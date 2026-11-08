@@ -25,6 +25,11 @@ class FuelLog {
   /// back to [kDefaultVehicleId], for data from before vehicles existed.
   final String vehicleId;
 
+  /// The [Pump] this fill-up was made at; null for logs from before
+  /// pumps existed. [pumpBrand] keeps the brand name either way, for the
+  /// calculators and CSV.
+  final String? pumpId;
+
   FuelLog({
     required this.vehicleId,
     required this.id,
@@ -37,6 +42,7 @@ class FuelLog {
     this.fuelType = 'Normal',
     this.totalCost,
     this.pricePerLitre,
+    this.pumpId,
   });
 
   /// Generate a unique ID based on current time + random suffix.
@@ -59,6 +65,7 @@ class FuelLog {
       'totalCost': totalCost,
       'pricePerLitre': pricePerLitre,
       'vehicleId': vehicleId,
+      'pumpId': pumpId,
     };
   }
 
@@ -80,6 +87,7 @@ class FuelLog {
           : 'Normal',
       totalCost: (map['totalCost'] as num?)?.toDouble(),
       pricePerLitre: (map['pricePerLitre'] as num?)?.toDouble(),
+      pumpId: map['pumpId'] as String?,
     );
   }
 
@@ -97,6 +105,8 @@ class FuelLog {
     double? pricePerLitre,
     bool clearPricePerLitre = false,
     String? vehicleId,
+    String? pumpId,
+    bool clearPumpId = false,
   }) {
     return FuelLog(
       vehicleId: vehicleId ?? this.vehicleId,
@@ -111,6 +121,7 @@ class FuelLog {
       totalCost: clearTotalCost ? null : (totalCost ?? this.totalCost),
       pricePerLitre:
           clearPricePerLitre ? null : (pricePerLitre ?? this.pricePerLitre),
+      pumpId: clearPumpId ? null : (pumpId ?? this.pumpId),
     );
   }
 

@@ -1,15 +1,21 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'dart:io' show File;
+
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/fuel_log.dart';
+import '../models/pump.dart';
+import '../models/service_record.dart';
+import '../models/service_type.dart';
 import '../models/vehicle.dart';
+import '../models/workshop.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
 
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
 
   static Database? _database;
 
@@ -22,6 +28,7 @@ class DatabaseHelper {
   Future<Database> _initDb() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'fuelpulse.db');
+    await _copyBeforeV4(path);
     return await openDatabase(
       path,
       version: schemaVersion,
@@ -30,6 +37,25 @@ class DatabaseHelper {
     );
   }
 
+  /// A second safety net beside the migration's transaction: before a
+  /// schema 3 database first opens as schema 4, keep a copy of it as
+  /// fuelpulse_pre_v4.db in the same folder.
+  static Future<void> _copyBeforeV4(String path) async {
+    try {
+      final file = File(path);
+      final copy = File(join(dirname(path), 'fuelpulse_pre_v4.db'));
+      if (!await file.exists() || await copy.exists()) return;
+      final old = await openReadOnlyDatabase(path);
+      final version = await old.getVersion();
+      await old.close();
+      if (version < 4) await file.copy(copy.path);
+    } catch (e) {
+      debugPrint('Pre-v4 copy failed: $e');
+    }
+  }
+
+  /// A fresh install builds schema 3 and then runs the same schema 4 step
+  /// as an upgrade, so there is one path to get right.
   @visibleForTesting
   static Future<void> onCreate(Database db, int version) async {
     await db.execute('''
@@ -49,6 +75,7 @@ class DatabaseHelper {
     ''');
     await _createVehicles(db);
     await db.execute(_createVehicleIndex);
+    await _toV4(db);
   }
 
   @visibleForTesting
@@ -68,6 +95,109 @@ class DatabaseHelper {
           "ALTER TABLE fuel_logs ADD COLUMN vehicleId TEXT NOT NULL DEFAULT '$kDefaultVehicleId'");
       await db.execute(_createVehicleIndex);
     }
+    if (oldVersion < 4) await _toV4(db);
+  }
+
+  /// Schema 4, additive only: pumps as named stations of a brand,
+  /// workshops, service types and service records; a pump id on each log;
+  /// make and model and mileage bands on each vehicle. Every existing brand
+  /// becomes one pump so old logs point at a pump straight away.
+  static Future<void> _toV4(DatabaseExecutor db) async {
+    await db.execute('ALTER TABLE fuel_logs ADD COLUMN pumpId TEXT');
+    await db.execute(
+        "ALTER TABLE vehicles ADD COLUMN model TEXT NOT NULL DEFAULT ''");
+    await db.execute('ALTER TABLE vehicles ADD COLUMN mileageBands TEXT');
+    await db.execute('''
+      CREATE TABLE pumps (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        brand TEXT NOT NULL,
+        isFavourite INTEGER NOT NULL DEFAULT 0,
+        sortOrder INTEGER NOT NULL DEFAULT 0,
+        createdAt TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE workshops (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        area TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        sortOrder INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE service_types (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        intervalKm INTEGER,
+        intervalMonths INTEGER,
+        sortOrder INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE services (
+        id TEXT PRIMARY KEY,
+        vehicleId TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        odometer INTEGER NOT NULL,
+        workshopId TEXT,
+        typeIds TEXT NOT NULL DEFAULT '[]',
+        cost REAL,
+        notes TEXT NOT NULL DEFAULT '',
+        nextDueKm INTEGER,
+        nextDueDate TEXT
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX idx_services_vehicle ON services(vehicleId, timestamp)');
+    await _seedServiceTypes(db);
+    await linkLogsToPumps(db);
+  }
+
+  static Future<void> _seedServiceTypes(DatabaseExecutor db) async {
+    for (final t in ServiceType.defaults) {
+      await db.insert('service_types', t.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
+  /// Points every log without a pump at a pump of its brand: one with no
+  /// station name, created when missing. Brands are matched ignoring case;
+  /// the first spelling met names the pump. Used by the schema 4 migration
+  /// and after restoring or importing logs from before pumps existed.
+  @visibleForTesting
+  static Future<void> linkLogsToPumps(DatabaseExecutor db) async {
+    final rows = await db.rawQuery("SELECT DISTINCT pumpBrand FROM fuel_logs "
+        "WHERE pumpId IS NULL AND pumpBrand != '' ORDER BY rowid");
+    final pumps = (await db.query('pumps')).map(Pump.fromMap).toList();
+    final byBrand = <String, String>{
+      for (final p in pumps.reversed)
+        if (p.name.isEmpty) p.brand.toLowerCase(): p.id,
+    };
+    for (final r in rows) {
+      final brand = r['pumpBrand'] as String;
+      final key = brand.toLowerCase();
+      var id = byBrand[key];
+      if (id == null) {
+        // The index keeps ids made in the same millisecond apart.
+        id = '${Pump.generateId()}${byBrand.length}';
+        await db.insert(
+            'pumps',
+            Pump(
+              id: id,
+              name: '',
+              brand: brand,
+              sortOrder: byBrand.length,
+              createdAt: DateTime.now().toIso8601String(),
+            ).toMap());
+        byBrand[key] = id;
+      }
+      await db.rawUpdate(
+          'UPDATE fuel_logs SET pumpId = ? '
+          'WHERE pumpId IS NULL AND lower(pumpBrand) = ?',
+          [id, key]);
+    }
   }
 
   static const _createVehicleIndex =
@@ -85,7 +215,9 @@ class DatabaseHelper {
         createdAt TEXT NOT NULL
       )
     ''');
-    await db.insert('vehicles', defaultVehicle().toMap());
+    // Schema 3 columns only: model and mileageBands arrive with schema 4.
+    await db.insert('vehicles',
+        defaultVehicle().toMap()..remove('model')..remove('mileageBands'));
   }
 
   /// The vehicle every pre-v2.0.0 log belongs to, as created by the schema 3
@@ -227,6 +359,8 @@ class DatabaseHelper {
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+    // CSV rows carry a brand, not a pump.
+    await linkLogsToPumps(db);
   }
 
   // ── Vehicles ──────────────────────────────────────────────────────────
@@ -261,6 +395,7 @@ class DatabaseHelper {
     final db = await database;
     await db.transaction((txn) async {
       await txn.delete('fuel_logs', where: 'vehicleId = ?', whereArgs: [id]);
+      await txn.delete('services', where: 'vehicleId = ?', whereArgs: [id]);
       await txn.delete('vehicles', where: 'id = ?', whereArgs: [id]);
     });
   }
@@ -272,14 +407,28 @@ class DatabaseHelper {
     await insertVehicle(defaultVehicle());
   }
 
-  /// Delete-all: no logs, and only the default vehicle.
+  /// Delete-all: no logs, pumps, workshops or services, the default
+  /// service types, and only the default vehicle.
   Future<void> resetToDefaultVehicle() async {
     final db = await database;
     await db.transaction((txn) async {
-      await txn.delete('fuel_logs');
-      await txn.delete('vehicles');
+      await _clearAll(txn);
       await txn.insert('vehicles', defaultVehicle().toMap());
+      await _seedServiceTypes(txn);
     });
+  }
+
+  static Future<void> _clearAll(DatabaseExecutor txn) async {
+    for (final table in const [
+      'fuel_logs',
+      'vehicles',
+      'pumps',
+      'workshops',
+      'service_types',
+      'services',
+    ]) {
+      await txn.delete(table);
+    }
   }
 
   /// Merge-mode restore: adds [newVehicles] (ids not on the device) and
@@ -305,17 +454,41 @@ class DatabaseHelper {
         await txn.insert('fuel_logs', log.toMap(),
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
+      await linkLogsToPumps(txn);
     });
   }
 
-  /// Replace-mode restore: swaps every vehicle and log in one transaction,
-  /// so a failure part-way leaves the old data in place. An empty
-  /// [vehicles] list falls back to the default vehicle.
-  Future<void> replaceAllData(List<Vehicle> vehicles, List<FuelLog> logs) async {
+  /// Replace-mode restore: swaps everything in one transaction, so a
+  /// failure part-way leaves the old data in place. An empty [vehicles]
+  /// list falls back to the default vehicle and an empty [serviceTypes]
+  /// list to the default types; logs without a pump get one per brand.
+  Future<void> replaceAllData(
+    List<Vehicle> vehicles,
+    List<FuelLog> logs, {
+    List<Pump> pumps = const [],
+    List<Workshop> workshops = const [],
+    List<ServiceType> serviceTypes = const [],
+    List<ServiceRecord> services = const [],
+  }) async {
     final db = await database;
     await db.transaction((txn) async {
-      await txn.delete('fuel_logs');
-      await txn.delete('vehicles');
+      await _clearAll(txn);
+      for (final p in pumps) {
+        await txn.insert('pumps', p.toMap());
+      }
+      for (final w in workshops) {
+        await txn.insert('workshops', w.toMap());
+      }
+      if (serviceTypes.isEmpty) {
+        await _seedServiceTypes(txn);
+      } else {
+        for (final s in serviceTypes) {
+          await txn.insert('service_types', s.toMap());
+        }
+      }
+      for (final s in services) {
+        await txn.insert('services', s.toMap());
+      }
       for (final v in vehicles.isEmpty ? [defaultVehicle()] : vehicles) {
         await txn.insert('vehicles', v.toMap(),
             conflictAlgorithm: ConflictAlgorithm.replace);
@@ -324,6 +497,107 @@ class DatabaseHelper {
         await txn.insert('fuel_logs', log.toMap(),
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
+      await linkLogsToPumps(txn);
     });
+  }
+
+  // ── Pumps ─────────────────────────────────────────────────────────────
+
+  /// Favourite first, then in the order they were added.
+  Future<List<Pump>> getPumps() async {
+    final db = await database;
+    final maps = await db.query('pumps',
+        orderBy: 'isFavourite DESC, sortOrder, createdAt');
+    return maps.map(Pump.fromMap).toList();
+  }
+
+  /// Adds or replaces [p]. A favourite pump unmarks every other one: the
+  /// form pre-selects the one favourite.
+  Future<void> savePump(Pump p) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      if (p.isFavourite) await txn.update('pumps', {'isFavourite': 0});
+      await txn.insert('pumps', p.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
+  /// Logs keep their pump id and brand, so they still show the brand.
+  Future<void> deletePump(String id) async {
+    final db = await database;
+    await db.delete('pumps', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── Workshops ─────────────────────────────────────────────────────────
+
+  Future<List<Workshop>> getWorkshops() async {
+    final db = await database;
+    final maps = await db.query('workshops', orderBy: 'sortOrder, name');
+    return maps.map(Workshop.fromMap).toList();
+  }
+
+  Future<void> upsertWorkshop(Workshop w) async {
+    final db = await database;
+    await db.insert('workshops', w.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteWorkshop(String id) async {
+    final db = await database;
+    await db.delete('workshops', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── Service types ─────────────────────────────────────────────────────
+
+  Future<List<ServiceType>> getServiceTypes() async {
+    final db = await database;
+    final maps = await db.query('service_types', orderBy: 'sortOrder, name');
+    return maps.map(ServiceType.fromMap).toList();
+  }
+
+  Future<void> upsertServiceType(ServiceType t) async {
+    final db = await database;
+    await db.insert('service_types', t.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteServiceType(String id) async {
+    final db = await database;
+    await db.delete('service_types', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ── Services ──────────────────────────────────────────────────────────
+
+  /// One vehicle's services, newest first.
+  Future<List<ServiceRecord>> getServices(String vehicleId) async {
+    final db = await database;
+    final maps = await db.query('services',
+        where: 'vehicleId = ?',
+        whereArgs: [vehicleId],
+        orderBy: 'timestamp DESC');
+    return maps.map(ServiceRecord.fromMap).toList();
+  }
+
+  /// Every vehicle's services, oldest first. Backups only.
+  Future<List<ServiceRecord>> getEveryService() async {
+    final db = await database;
+    final maps = await db.query('services', orderBy: 'timestamp ASC');
+    return maps.map(ServiceRecord.fromMap).toList();
+  }
+
+  Future<void> insertService(ServiceRecord s) async {
+    final db = await database;
+    await db.insert('services', s.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> updateService(ServiceRecord s) async {
+    final db = await database;
+    await db.update('services', s.toMap(), where: 'id = ?', whereArgs: [s.id]);
+  }
+
+  Future<void> deleteService(String id) async {
+    final db = await database;
+    await db.delete('services', where: 'id = ?', whereArgs: [id]);
   }
 }
