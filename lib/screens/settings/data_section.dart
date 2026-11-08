@@ -151,8 +151,8 @@ class DataSection extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           'Backup files (.json.gz) carry everything: every vehicle with its '
-          'entries and costs, fuel types, pump brands and settings. CSV '
-          'carries the current vehicle\'s entries only.',
+          'entries and costs, services, pumps, workshops, brands and grades, '
+          'and settings. CSV carries the current vehicle\'s entries only.',
           style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
       ],

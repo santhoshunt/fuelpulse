@@ -19,21 +19,25 @@ FuelPulse records every fuel fill-up and works out **real-world mileage** for ea
 | Feature | Description |
 |---|---|
 | **Dashboard** | A speedometer-style gauge with the needle on your average km/L, the odometer on a seven-segment display, fuel left after the last refill with the range it gives, worst, last and best km/L, spend tiles and the last 12 segments' mileage |
-| **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, analytics and tank size; switch by tapping the vehicle name on the Dashboard or Fuel tab |
+| **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, services, analytics, tank size, make and model, and mileage ranges; switch by tapping the vehicle name on the Dashboard or Fuel tab |
+| **Service records** | Log each service with its date, odometer, workshop, the work done and the cost, and schedule the next one by km, months or both. The Service tab shows what is due next and the history; the Dashboard shows the next service |
+| **Service reminders** | A phone notification at 09:00 on a due date, and one when a fill-up comes within 100 km of a due odometer reading |
+| **Petrol pumps** | Save the pumps you use as a brand and a station (Bharat Petroleum, MG Road) and star one to pre-select it in the form. Existing fill-ups get one pump per brand |
+| **Mileage ranges** | Five bands, Poor to Great, colour each km/L. Bikes and cars start with their own defaults, and each vehicle's limits can be changed |
 | **In-app updates** | Checks GitHub once a day and offers new versions. It downloads the APK for your phone's processor and installs it only if it is FuelPulse, signed with the same key and newer |
 | **Segment-based efficiency** | Calculates km/L between consecutive full-tank entries — shows the exact *"X km ÷ Y L"* breakdown |
 | **Fuel list and refill detail** | Fill-ups grouped by month with the brand logo, grade and km/L coloured from Poor to Great. Tap one to see distance, cost per km and the tank after it; swipe to delete |
-| **Analytics** | Monthly fuel spend, mileage over time, brand and fuel grade comparisons and totals. Each chart has its own period: 1, 3, 6 or 12 months |
-| **Brand comparison** | Ranks fuel brands by average efficiency, with each brand's logo |
-| **Fuel types** | Tag each fill-up with a fuel type. Normal is built in, and you can add others such as XP-95. Analytics compares km/L per type |
+| **Analytics** | Fuel: monthly spend, mileage over time, pump and fuel grade comparisons and totals. Service: monthly spend, spend by type, running cost per km with service included, and what is due. Each chart has its own period |
+| **Pump comparison** | Ranks your pumps by average km/L over 3, 6 or 12 months, brand first with its logo |
+| **Brands and fuel grades** | Each brand has its own grades (E20, Speed 97, XP100 and so on), offered as chips in the form. Analytics compares km/L per grade |
 | **Photo scan** | Fill a fill-up from photos on the Scan photos screen: the odometer (TOTAL reading, or TRIP as km travelled) and the pump display (amount, litres and rate, kept only when litres × rate matches the amount; when they disagree, the form offers amount ÷ rate as the litres). Gallery photos also set the date. Text is read on the phone and nothing is uploaded. A Report button shares what was read, with the photo, when a scan goes wrong |
 | **Cost tracking** | Enter the price per litre or the total paid and the app fills in the other. The Dashboard shows cost per km, this month's and the average monthly spend, and the latest price |
 | **Date and time** | Each fill-up has an editable date and time, so a fill-up logged later lands in the right place |
-| **Pump brand management** | Add, rename and remove pump brands. A rename updates every past fill-up |
+| **Brand management** | Add, rename and remove brands and their grades. A rename updates every past fill-up |
 | **Tank level estimation** | Forward-walk model estimates remaining litres at each fill-up |
 | **Full / Partial fill tracking** | Handles both full-tank and partial-fill entries correctly |
-| **CSV import / export** | Export or import the current vehicle's fill-ups as CSV |
-| **Backup file** | Export one compressed file with every vehicle, its fill-ups, fuel types, pump brands and settings, and restore it on any phone |
+| **CSV import / export** | Export or import the current vehicle's fill-ups as CSV, and import services from a CSV template |
+| **Backup file** | Export one compressed file with every vehicle, its fill-ups and services, pumps, workshops, brands and grades, and settings, and restore it on any phone |
 | **Google Drive backup** | Optional daily, weekly or monthly upload of the same backup file. The app can only see files it created in your Drive |
 | **Brand logos** | Shell, HP, Indian Oil, Bharat Petroleum, Nayara Energy and Jio-BP show their own logos; other brands show initials |
 | **Light and dark themes** | Light, dark or follow the phone, with 15 colour palettes. Each palette pairs a primary colour with a partner colour for spend bars and the tank level |
@@ -47,8 +51,10 @@ FuelPulse records every fuel fill-up and works out **real-world mileage** for ea
 | ![Dashboard with the mileage gauge and spend tiles](screenshots/dashboard.png) | ![Dashboard in dark mode](screenshots/dashboard_dark.png) |
 | **Fuel** | **Refill** |
 | ![Fill-ups grouped by month](screenshots/fuel.png) | ![One refill in detail](screenshots/refill.png) |
-| **Add fill-up** | **Analytics** |
-| ![Add fill-up form](screenshots/add_fill_up.png) | ![Monthly spend and mileage charts](screenshots/analytics.png) |
+| **Add fill-up** | **Service** |
+| ![Add fill-up form](screenshots/add_fill_up.png) | ![Next scheduled service and history](screenshots/service.png) |
+| **Analytics, fuel** | **Analytics, service** |
+| ![Monthly spend and mileage charts](screenshots/analytics.png) | ![Service spend, cost per km and upcoming services](screenshots/analytics_service.png) |
 | **Appearance** | |
 | ![Theme mode and the 15 colour palettes](screenshots/appearance.png) | |
 The screenshots come from sample data rendered offscreen. To regenerate them, run:
@@ -67,6 +73,7 @@ flutter test tool/readme_screenshots_test.dart --update-goldens
 - **Backup:** [file_picker](https://pub.dev/packages/file_picker) for restore, [google_sign_in](https://pub.dev/packages/google_sign_in) + [googleapis](https://pub.dev/packages/googleapis) for Drive
 - **Photo scan:** [google_mlkit_text_recognition](https://pub.dev/packages/google_mlkit_text_recognition) for on-device text recognition, [image_picker](https://pub.dev/packages/image_picker) for the camera and gallery
 - **Charts:** drawn with `CustomPaint`, no chart package
+- **Reminders:** [flutter_local_notifications](https://pub.dev/packages/flutter_local_notifications) and [timezone](https://pub.dev/packages/timezone) for service notifications
 - **Updates:** [http](https://pub.dev/packages/http) for the GitHub release check and download, a Kotlin `PackageInstaller` bridge for the install, [url_launcher](https://pub.dev/packages/url_launcher) for the release page
 - **Theming:** a `ThemeExtension` (`AppColors`) built from the chosen palette and light or dark mode, so screens never hard-code a colour
 
@@ -79,7 +86,11 @@ lib/
 │   └── database_helper.dart   # SQLite CRUD operations
 ├── models/
 │   ├── fuel_log.dart          # FuelLog data model
-│   └── vehicle.dart           # Vehicle data model
+│   ├── vehicle.dart           # Vehicle data model
+│   ├── pump.dart              # A brand's station
+│   ├── workshop.dart          # Garage or service centre
+│   ├── service_type.dart      # Kind of service work and its interval
+│   └── service_record.dart    # One service visit and its next due
 ├── theme/
 │   ├── palettes.dart          # The 15 colour palettes
 │   ├── app_colors.dart        # Colours for the chosen palette and mode
@@ -91,17 +102,26 @@ lib/
 │   ├── refill_detail_screen.dart # One fill-up in full
 │   ├── entry_form_screen.dart # Add or edit a fill-up
 │   ├── scan_photos_screen.dart # Odometer and pump photo slots
-│   ├── analytics_screen.dart  # Spend, mileage, brand and grade comparisons
+│   ├── service_screen.dart    # Next scheduled service and history
+│   ├── service_form_screen.dart # Add or edit a service
+│   ├── analytics_screen.dart  # Fuel and service analytics
 │   ├── settings_screen.dart   # Settings, one section per file below
 │   ├── appearance_screen.dart # Theme mode and palette
+│   ├── pumps_screen.dart      # Petrol pumps
+│   ├── brands_screen.dart     # Brands and their fuel grades
+│   ├── workshops_screen.dart  # Workshops
+│   ├── service_types_screen.dart # Service types and intervals
+│   ├── vehicle_edit_screen.dart # Add or edit a vehicle
+│   ├── mileage_ranges_screen.dart # A vehicle's km/L bands
 │   ├── import_export_screen.dart # CSV, backup file and Drive backup
-│   └── settings/              # Vehicles, lists, data, Drive, about, danger zone
+│   └── settings/              # Vehicles, data, Drive, about, danger zone
 ├── services/
 │   ├── backup_payload.dart    # Build and restore the backup contents
 │   ├── backup_codec.dart      # Gzip encode/decode of the backup
 │   ├── backup_file.dart       # Export/import the backup as a file
 │   ├── drive_backup_service.dart # Scheduled Google Drive backup
 │   ├── photo_scan.dart        # Odometer and pump photo reading, scan report
+│   ├── service_reminders.dart # Service notifications
 │   ├── update_service.dart    # GitHub release check
 │   ├── update_downloader.dart # Checked APK download
 │   ├── update_installer.dart  # Bridge to the Kotlin installer
@@ -114,8 +134,9 @@ lib/
 │   ├── mileage_bands.dart          # Poor to Great km/L bands and colours
 │   ├── period_filter.dart          # Logs for the last N months
 │   ├── appearance_prefs.dart       # Saved palette and theme mode
-│   ├── fuel_type_manager.dart      # Fuel type list (add, rename, delete)
-│   ├── pump_brand_manager.dart     # Pump brand list (add, rename, delete)
+│   ├── brand_grades.dart           # Brands and their fuel grades
+│   ├── service_schedule.dart       # Which service is due next
+│   ├── service_csv.dart            # Service CSV template and import
 │   ├── vehicle_manager.dart        # Active vehicle
 │   ├── csv_helper.dart             # CSV import/export
 │   ├── page_routes.dart            # Smooth fade+slide transitions
