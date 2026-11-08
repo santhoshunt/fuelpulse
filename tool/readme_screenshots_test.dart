@@ -5,7 +5,7 @@
 //   flutter test tool/readme_screenshots_test.dart --update-goldens
 //
 // Output: screenshots/dashboard.png, dashboard_dark.png, fuel.png,
-// refill.png, add_fill_up.png, service.png, analytics.png,
+// grade_sheet.png, refill.png, add_fill_up.png, service.png, analytics.png,
 // analytics_service.png, appearance.png.
 
 import 'dart:io';
@@ -176,7 +176,7 @@ void main() {
 
   /// The app on [tab], optionally after tapping [tap], saved as [name].
   Future<void> capture(WidgetTester tester, String name,
-      {int tab = 0, Finder? tap, bool dark = false}) async {
+      {int tab = 0, Finder? tap, Finder? then, bool dark = false}) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.625;
     addTearDown(tester.view.reset);
@@ -192,10 +192,10 @@ void main() {
         await tester.tap(find.byType(NavigationDestination).at(tab));
         await settle(tester);
       }
-      if (tap != null) {
-        await tester.ensureVisible(tap.first);
+      for (final f in [?tap, ?then]) {
+        await tester.ensureVisible(f.first);
         await tester.pumpAndSettle();
-        await tester.tap(tap.first);
+        await tester.tap(f.first);
         await settle(tester);
       }
       await expectLater(
@@ -210,8 +210,12 @@ void main() {
   testWidgets('dashboard', (t) => capture(t, 'dashboard'));
   testWidgets('dashboard dark', (t) => capture(t, 'dashboard_dark', dark: true));
   testWidgets('fuel', (t) => capture(t, 'fuel', tab: 1));
+  testWidgets('grade sheet', (t) => capture(t, 'grade_sheet',
+      tab: 1, tap: find.textContaining('24 Sep · 16,000 km')));
   testWidgets('refill', (t) => capture(t, 'refill',
-      tab: 1, tap: find.text('24 Sep · 16,000 km · 30.50 L')));
+      tab: 1,
+      tap: find.textContaining('24 Sep · 16,000 km'),
+      then: find.text('Open refill')));
   testWidgets('add fill-up', (t) => capture(t, 'add_fill_up',
       tab: 1, tap: find.byTooltip('Add refill')));
   testWidgets('service', (t) => capture(t, 'service', tab: 2));

@@ -41,11 +41,11 @@ Future<void> _saveDialog(WidgetTester tester) async {
   await _settle(tester);
 }
 
-Finder _rowButton(String vehicleName, String tooltip) => find.descendant(
-      of: find.ancestor(
-          of: find.text(vehicleName), matching: find.byType(Row)),
-      matching: find.byTooltip(tooltip),
-    );
+/// Tapping a vehicle's row opens its page (v3.2.0: no row buttons).
+Future<void> _openVehicle(WidgetTester tester, String vehicleName) async {
+  await tester.tap(find.text(vehicleName));
+  await _settle(tester);
+}
 
 FuelLog _log(String id, String vehicleId) => FuelLog(
       vehicleId: vehicleId,
@@ -109,8 +109,7 @@ void main() {
       (tester) async {
     await _pumpSettings(tester);
 
-    await tester.tap(_rowButton(kDefaultVehicleName, 'Edit vehicle'));
-    await _settle(tester);
+    await _openVehicle(tester, kDefaultVehicleName);
     await tester.enterText(_dialogField('Name'), 'Swift');
     await tester.enterText(_dialogField('Tank size (optional)'), '37');
     await _saveDialog(tester);
@@ -120,8 +119,7 @@ void main() {
     expect(v.tankCapacity, 37);
     expect(find.text('Car · 37 L tank'), findsOneWidget);
 
-    await tester.tap(_rowButton('Swift', 'Edit vehicle'));
-    await _settle(tester);
+    await _openVehicle(tester, 'Swift');
     await tester.enterText(_dialogField('Tank size (optional)'), '');
     await _saveDialog(tester);
 
@@ -131,11 +129,8 @@ void main() {
 
   testWidgets('the last vehicle cannot be deleted', (tester) async {
     await _pumpSettings(tester);
-    final delete = tester.widget<IconButton>(find.ancestor(
-        of: _rowButton(kDefaultVehicleName,
-            'Add another vehicle before deleting this one'),
-        matching: find.byType(IconButton)));
-    expect(delete.onPressed, isNull);
+    await _openVehicle(tester, kDefaultVehicleName);
+    expect(find.text('Delete vehicle'), findsNothing);
   });
 
   testWidgets('deleting a vehicle names its fill-ups and removes them',
@@ -151,7 +146,10 @@ void main() {
     });
     await _pumpSettings(tester);
 
-    await tester.tap(_rowButton('Activa', 'Delete vehicle'));
+    await _openVehicle(tester, 'Activa');
+    await tester.ensureVisible(find.text('Delete vehicle'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete vehicle'));
     await _settle(tester);
     expect(find.textContaining('This also deletes its 2 fill-ups'),
         findsOneWidget);

@@ -3,6 +3,7 @@ import '../../theme/app_colors.dart';
 import '../../db/database_helper.dart';
 import '../../models/vehicle.dart';
 import '../../services/service_reminders.dart';
+import '../../widgets/vehicle_icon.dart';
 import '../../widgets/vehicle_picker.dart';
 import 'settings_widgets.dart';
 
@@ -90,7 +91,6 @@ class _VehiclesSectionState extends State<VehiclesSection> {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    final canDelete = _vehicles.length > 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,65 +112,46 @@ class _VehiclesSectionState extends State<VehiclesSection> {
                 if (i > 0)
                   Divider(
                       height: 1,
-                      indent: 50,
+                      indent: 58,
                       endIndent: 16,
                       color: AppColors.of(context).cardBorder),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
-                  child: Row(
-                    children: [
-                      Icon(vehicleIcon(_vehicles[i].type),
-                          color: AppColors.of(context).textSecondary, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _vehicles[i].name,
-                              style: TextStyle(
-                                  color: AppColors.of(context).textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              _subtitle(_vehicles[i]),
-                              style: TextStyle(
-                                  color: AppColors.of(context).textSecondary,
-                                  fontSize: 12),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                // Tap opens the vehicle page, which has Delete.
+                InkWell(
+                  onTap: () => _edit(_vehicles[i]),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+                    child: Row(
+                      children: [
+                        VehicleIcon.of(_vehicles[i], size: 30),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _vehicles[i].name,
+                                style: TextStyle(
+                                    color: AppColors.of(context).textPrimary,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                _subtitle(_vehicles[i]),
+                                style: TextStyle(
+                                    color: AppColors.of(context).textSecondary,
+                                    fontSize: 12),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        tooltip: 'Edit vehicle',
-                        icon: Icon(Icons.edit_outlined,
-                            size: 18, color: accent.withValues(alpha: 0.7)),
-                        onPressed: () => _edit(_vehicles[i]),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      // The last vehicle cannot go: every log needs one.
-                      IconButton(
-                        tooltip: canDelete
-                            ? 'Delete vehicle'
-                            : 'Add another vehicle before deleting this one',
-                        icon: Icon(Icons.delete_outline,
-                            size: 18,
-                            color: canDelete
-                                ? AppColors.of(context).danger.withValues(alpha: 0.7)
-                                : AppColors.of(context)
-                                    .textSecondary
-                                    .withValues(alpha: 0.4)),
-                        onPressed:
-                            canDelete ? () => _delete(_vehicles[i]) : null,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ],
+                        Icon(Icons.chevron_right,
+                            color: AppColors.of(context).textSecondary),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ),              ],
               Divider(height: 1, color: AppColors.of(context).cardBorder),
               // A full-width row, so its press highlight stays inside it.
               InkWell(

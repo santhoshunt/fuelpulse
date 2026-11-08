@@ -18,7 +18,8 @@ import '../utils/trend_calculator.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/gauge_card.dart';
 import '../widgets/trend_chart.dart';
-import '../widgets/vehicle_picker.dart' show showVehiclePicker, vehicleIcon;
+import '../widgets/vehicle_icon.dart';
+import '../widgets/vehicle_picker.dart' show showVehiclePicker;
 import 'entry_form_screen.dart';
 import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
 
@@ -124,8 +125,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return (
         litres: left,
         caption: 'Left now, about',
-        note: 'Enough for about  km, from your '
-            ' km reading on ',
+        note: 'Enough for about ${(left * avg).round()} km, from your '
+            '${_rupees.format(r.km)} km reading on '
+            '${DateFormat('d MMM').format(r.at)}',
       );
     }
     final at = DateTime.tryParse(latest.timestamp);
@@ -133,10 +135,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       litres: after,
       caption: at == null
           ? 'In the tank after the last refill'
-          : 'In the tank after the  refill',
+          : 'In the tank after the ${DateFormat('d MMM').format(at)} refill',
       note: avg == null || avg <= 0
           ? 'Add a reading to estimate what is left now'
-          : 'Enough for about  km from that refill. '
+          : 'Enough for about ${(after * avg).round()} km from that refill. '
               'Add a reading to estimate what is left now',
     );
   }
@@ -233,60 +235,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
   }
 
+  /// The app name, and on the right the active vehicle as a pill that opens
+  /// the vehicle picker.
   Widget _header(AppColors colors) {
+    final v = _vehicle;
     return Row(
       children: [
-        // The active vehicle's type, so a switch shows at a glance.
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: colors.primaryTint,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Icon(
-            vehicleIcon(_vehicle?.type ?? VehicleType.car),
-            color: colors.primary,
-          ),
-        ),
-        const SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'FuelPulse',
-                style: TextStyle(
+          child: Text('FuelPulse',
+              style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 26,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                  height: 1.1,
-                ),
-              ),
-              InkWell(
-                onTap: _pickVehicle,
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(
-                    '${_vehicle?.name ?? ''} ▾',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.primary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+                  letterSpacing: -0.4)),
         ),
+        if (v != null)
+          Material(
+            color: colors.card,
+            shape: StadiumBorder(side: BorderSide(color: colors.cardBorder)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: _pickVehicle,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    VehicleIcon.of(v, size: 26),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 140),
+                      child: Text(v.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: colors.primary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    Icon(Icons.arrow_drop_down, color: colors.primary),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
-
   Widget _nextService(NextService n, AppColors colors) {
     final r = n.record;
     final at = [

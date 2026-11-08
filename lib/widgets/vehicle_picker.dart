@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../screens/vehicle_edit_screen.dart';
 import '../utils/page_routes.dart';
-import '../theme/app_colors.dart';
 import '../db/database_helper.dart';
 import '../models/vehicle.dart';
 import 'option_picker.dart';
+import 'vehicle_icon.dart';
 
 IconData vehicleIcon(VehicleType type) => switch (type) {
       VehicleType.car => Icons.directions_car_outlined,
@@ -34,7 +34,7 @@ Future<Vehicle?> showVehiclePicker(
         PickerOption(
           value: v.id,
           label: v.name,
-          leading: Icon(vehicleIcon(v.type), color: AppColors.of(context).textSecondary, size: 22),
+          leading: VehicleIcon.of(v, size: 26),
         ),
     ],
     selected: selectedId,
