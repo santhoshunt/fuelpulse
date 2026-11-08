@@ -234,7 +234,7 @@ class _FuelListScreenState extends State<FuelListScreen> {
   }
 
   List<Widget> _months(AppColors colors) {
-    final bands = defaultBandsFor(_vehicle?.type ?? VehicleType.car);
+    final bands = (_vehicle == null ? defaultBandsFor(VehicleType.car) : bandsFor(_vehicle!));
     final groups = <String, List<FuelLog>>{};
     for (final log in _logs) {
       final at = DateTime.tryParse(log.timestamp);

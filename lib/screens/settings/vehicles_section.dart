@@ -30,22 +30,25 @@ class _VehiclesSectionState extends State<VehiclesSection> {
   }
 
   Future<void> _add() async {
-    final v = await showVehicleDialog(context, nextSortOrder: _vehicles.length);
+    final v = await showVehicleEditor(context, nextSortOrder: _vehicles.length);
     if (v == null) return;
     await _db.insertVehicle(v);
     await _load();
   }
 
   Future<void> _edit(Vehicle vehicle) async {
-    final v = await showVehicleDialog(context, initial: vehicle);
+    final v = await showVehicleEditor(context,
+        initial: vehicle,
+        onDelete: _vehicles.length > 1 ? () => _delete(vehicle) : null);
     if (v == null) return;
     await _db.updateVehicle(v);
     await _load();
   }
 
-  Future<void> _delete(Vehicle vehicle) async {
+  /// Says whether the vehicle was deleted.
+  Future<bool> _delete(Vehicle vehicle) async {
     final count = await _db.getLogCountFor(vehicle.id);
-    if (!mounted) return;
+    if (!mounted) return false;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -67,10 +70,11 @@ class _VehiclesSectionState extends State<VehiclesSection> {
         ],
       ),
     );
-    if (confirm != true) return;
+    if (confirm != true) return false;
     await _db.deleteVehicle(vehicle.id);
     if (mounted) showSettingsSnack(context, 'Deleted "${vehicle.name}".');
     await _load();
+    return true;
   }
 
   String _subtitle(Vehicle v) {
@@ -78,7 +82,7 @@ class _VehiclesSectionState extends State<VehiclesSection> {
     final tank = cap == null
         ? 'Tank size not set'
         : '${cap.toStringAsFixed(cap % 1 == 0 ? 0 : 1)} L tank';
-    return '${vehicleTypeLabel(v.type)} · $tank';
+    return '${v.model.isEmpty ? vehicleTypeLabel(v.type) : v.model} · $tank';
   }
 
   @override

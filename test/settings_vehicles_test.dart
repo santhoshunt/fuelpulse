@@ -30,14 +30,14 @@ Future<void> _pumpSettings(WidgetTester tester) async {
   await _settle(tester);
 }
 
-Finder _dialogField(String label) => find.descendant(
-    of: find.byType(AlertDialog),
-    matching: find.widgetWithText(TextField, label));
+// Add and edit open the vehicle page (v3.0.0), not a dialog.
+Finder _dialogField(String label) => find.widgetWithText(TextField, label);
 
 Future<void> _saveDialog(WidgetTester tester) async {
-  await tester.tap(find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.widgetWithText(ElevatedButton, 'Save')));
+  final save = find.widgetWithText(ElevatedButton, 'Save');
+  await tester.ensureVisible(save);
+  await tester.pumpAndSettle();
+  await tester.tap(save);
   await _settle(tester);
 }
 

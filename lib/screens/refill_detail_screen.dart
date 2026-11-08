@@ -138,7 +138,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
         log.totalCost ?? computeTotalCost(log.pricePerLitre, log.liters);
     final kmL = _eff?.value;
     final cap = _vehicle?.tankCapacity ?? 0;
-    final bands = defaultBandsFor(_vehicle?.type ?? VehicleType.car);
+    final bands = (_vehicle == null ? defaultBandsFor(VehicleType.car) : bandsFor(_vehicle!));
     final brightness = Theme.of(context).brightness;
 
     return [

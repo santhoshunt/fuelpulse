@@ -21,6 +21,11 @@ class MileageBands {
   }
 }
 
+/// The vehicle's own bands, else the defaults for its type.
+MileageBands bandsFor(Vehicle v) => v.mileageBands != null
+    ? MileageBands(v.mileageBands!)
+    : defaultBandsFor(v.type);
+
 /// Typical ranges: a commuter bike runs about three times a car's km/L.
 MileageBands defaultBandsFor(VehicleType t) => t == VehicleType.bike
     ? const MileageBands([20, 25, 28, 32])
