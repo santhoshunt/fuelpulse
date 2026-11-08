@@ -49,6 +49,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   int _spendMonths = 6;
   int _mileageMonths = 6;
   int _brandMonths = 6;
+  bool _pumpByCost = false;
+  bool _gradeByCost = false;
   int _serviceMonths = 12;
   bool _serviceView = false;
   Map<String, Pump> _pumps = const {};
@@ -246,108 +248,171 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  /// Km/L per pump, brand first, the best in the primary colour.
+  /// Km/L per pump, brand first, ranked by km/L or by ₹ per km.
   List<Widget> _pumpCard(AppColors colors) {
-    final r = calculateGroupedEfficiency(
-        logsInLastMonths(_chrono, _brandMonths, now: _now),
-        (l) => l.pumpId ?? '',
+    final window = logsInLastMonths(_chrono, _brandMonths, now: _now);
+    final r = calculateGroupedEfficiency(window, (l) => l.pumpId ?? '',
         emptyKeyLabel: 'Unknown pump');
-    final best = r.rankings.isEmpty ? 0.0 : r.rankings.first.weightedEfficiency;
-    final bestPump = r.rankings.isEmpty ? null : _pumps[r.rankings.first.label];
+    // Litre-weighted price per pump, from fills that carry one.
+    final spend = <String, double>{};
+    final litres = <String, double>{};
+    for (final l in window) {
+      final p = l.pricePerLitre ?? computePricePerLitre(l.totalCost, l.liters);
+      final key = l.pumpId ?? 'Unknown pump';
+      if (p == null) continue;
+      spend[key] = (spend[key] ?? 0) + p * l.liters;
+      litres[key] = (litres[key] ?? 0) + l.liters;
+    }
+    final rows = [
+      for (final g in r.rankings)
+        () {
+          final pump = _pumps[g.label];
+          final price = (litres[g.label] ?? 0) > 0
+              ? spend[g.label]! / litres[g.label]!
+              : null;
+          return _Ranked(
+            title: pump?.brand ?? g.label,
+            logo: pump?.brand ?? g.label,
+            place: pump != null && pump.name.isNotEmpty ? pump.name : null,
+            kmL: g.weightedEfficiency,
+            price: price,
+            fills: g.fillCount,
+          );
+        }(),
+    ];
     return [
       const SizedBox(height: 14),
-      _card([
-        Row(
-          children: [
-            Expanded(child: _cap('Pump comparison', colors)),
-            if (r.rankings.isNotEmpty)
-              Text.rich(TextSpan(
-                  text: 'Best: ',
-                  style: TextStyle(color: colors.textSecondary, fontSize: 13),
-                  children: [
-                    TextSpan(
-                        text: bestPump?.brand ?? r.rankings.first.label,
-                        style: TextStyle(
-                            color: colors.textPrimary,
-                            fontWeight: FontWeight.w600)),
-                  ])),
-          ],
-        ),
-        const SizedBox(height: 10),
-        PeriodSelector(
+      _rankCard(
+        colors,
+        caption: 'Pump comparison',
+        rows: rows,
+        byCost: _pumpByCost,
+        onByCost: (v) => setState(() => _pumpByCost = v),
+        period: PeriodSelector(
             months: _brandMonths,
             options: const [3, 6, 12],
             onChanged: (m) => setState(() => _brandMonths = m)),
-        const SizedBox(height: 14),
-        if (r.rankings.isEmpty)
-          Text('Appears once a full-tank segment closes in this period.',
-              style: TextStyle(color: colors.textSecondary, fontSize: 13))
-        else
-          for (final g in r.rankings) _pumpRow(g, best, colors),
-      ]),
+      ),
     ];
   }
 
-  Widget _pumpRow(GroupEfficiency g, double best, AppColors colors) {
-    final pump = _pumps[g.label];
-    final brand = pump?.brand ?? g.label;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
+  /// A ranked comparison: by km/L (higher first) or by ₹ per km (lower
+  /// first, rows without a price last), the leader in the primary colour.
+  Widget _rankCard(
+    AppColors colors, {
+    required String caption,
+    required List<_Ranked> rows,
+    required bool byCost,
+    required ValueChanged<bool> onByCost,
+    Widget? period,
+    String? footnote,
+  }) {
+    final sorted = [...rows]..sort((a, b) => byCost
+        ? (a.perKm ?? double.infinity).compareTo(b.perKm ?? double.infinity)
+        : b.kmL.compareTo(a.kmL));
+    final bestKmL = rows.isEmpty ? 0.0 : rows.map((r) => r.kmL).reduce(math.max);
+    final costs = rows.map((r) => r.perKm).whereType<double>();
+    final bestCost = costs.isEmpty ? null : costs.reduce(math.min);
+    final strong = TextStyle(
+        color: colors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600);
+    final muted = TextStyle(color: colors.textSecondary, fontSize: 12);
+    return _card([
+      Row(
         children: [
-          BrandLogo(brandName: brand, size: 32),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(child: _cap(caption, colors)),
+          if (sorted.isNotEmpty)
+            Text.rich(TextSpan(
+                text: 'Best: ',
+                style: TextStyle(color: colors.textSecondary, fontSize: 13),
+                children: [
+                  TextSpan(
+                      text: sorted.first.title,
+                      style: TextStyle(
+                          color: colors.textPrimary,
+                          fontWeight: FontWeight.w600)),
+                ])),
+        ],
+      ),
+      const SizedBox(height: 10),
+      PeriodSelector(
+        months: byCost ? 1 : 0,
+        options: const [0, 1],
+        label: (v) => v == 0 ? 'km/L' : '₹ per km',
+        onChanged: (v) => onByCost(v == 1),
+      ),
+      if (period != null) ...[const SizedBox(height: 8), period],
+      const SizedBox(height: 14),
+      if (sorted.isEmpty)
+        Text('Appears once a full-tank segment closes in this period.',
+            style: TextStyle(color: colors.textSecondary, fontSize: 13))
+      else
+        for (final r in sorted)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(brand,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: colors.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                    Text('${g.weightedEfficiency.toStringAsFixed(1)} km/L',
-                        style: TextStyle(
-                            color: colors.textPrimary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600)),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    value: best > 0
-                        ? math.min(1.0, g.weightedEfficiency / best)
-                        : 0,
-                    minHeight: 6,
-                    color: g.weightedEfficiency == best
-                        ? colors.primary
-                        : colors.primarySoft,
-                    backgroundColor: colors.cardBorder,
+                if (r.logo != null) ...[
+                  BrandLogo(brandName: r.logo!, size: 32),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                              child: Text(r.title,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: strong)),
+                          Text(
+                              byCost
+                                  ? (r.perKm == null
+                                      ? 'No price'
+                                      : '₹${r.perKm!.toStringAsFixed(2)}/km')
+                                  : '${r.kmL.toStringAsFixed(1)} km/L',
+                              style: strong),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: byCost
+                              ? (r.perKm == null || bestCost == null
+                                  ? 0
+                                  : bestCost / r.perKm!)
+                              : (bestKmL > 0 ? r.kmL / bestKmL : 0),
+                          minHeight: 6,
+                          color: identical(r, sorted.first)
+                              ? colors.primary
+                              : colors.primarySoft,
+                          backgroundColor: colors.cardBorder,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                          [
+                            ?r.place,
+                            byCost
+                                ? '${r.kmL.toStringAsFixed(1)} km/L'
+                                : (r.perKm == null
+                                    ? null
+                                    : '₹${r.perKm!.toStringAsFixed(2)}/km'),
+                            if (r.price != null)
+                              '₹${r.price!.toStringAsFixed(2)}/L',
+                            '${r.fills} ${r.fills == 1 ? 'refill' : 'refills'}',
+                          ].whereType<String>().join(' · '),
+                          style: muted),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                    [
-                      if (pump != null && pump.name.isNotEmpty) pump.name,
-                      '${g.fillCount} ${g.fillCount == 1 ? 'refill' : 'refills'}',
-                    ].join(' · '),
-                    style:
-                        TextStyle(color: colors.textSecondary, fontSize: 12)),
               ],
             ),
           ),
-        ],
-      ),
-    );
+      if (footnote != null) Text(footnote, style: muted),
+    ]);
   }
-
   // ── Service ─────────────────────────────────────────────────────────
 
   List<Widget> _serviceCards(AppColors colors) {
@@ -515,41 +580,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     if (r.rankings.isEmpty) return const [];
     return [
       const SizedBox(height: 14),
-      _card([
-        _cap('Fuel grade comparison', colors),
-        const SizedBox(height: 12),
-        for (final g in r.rankings)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text.rich(TextSpan(
-                    text: g.fuelType,
-                    style: TextStyle(color: colors.textPrimary, fontSize: 15),
-                    children: [
-                      TextSpan(
-                          text:
-                              ' · ${g.fillCount} ${g.fillCount == 1 ? 'refill' : 'refills'}',
-                          style: TextStyle(
-                              color: colors.textSecondary, fontSize: 13)),
-                    ],
-                  )),
-                ),
-                Text('${g.weightedEfficiency.toStringAsFixed(1)} km/L',
-                    style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600)),
-              ],
+      _rankCard(
+        colors,
+        caption: 'Fuel grade comparison',
+        rows: [
+          for (final g in r.rankings)
+            _Ranked(
+              title: g.fuelType,
+              kmL: g.weightedEfficiency,
+              price: g.avgPricePerLitre,
+              fills: g.fillCount,
+              perKmOverride: g.costPerKm,
             ),
-          ),
-        Text('All time',
-            style: TextStyle(color: colors.textSecondary, fontSize: 12)),
-      ]),
+        ],
+        byCost: _gradeByCost,
+        onByCost: (v) => setState(() => _gradeByCost = v),
+        footnote: 'All time',
+      ),
     ];
   }
-
   Widget _totalsCard(AppColors colors) {
     final cost = calculateCostStats(_chrono, now: _now);
     final distance = _chrono.length < 2
@@ -586,4 +635,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           style: TextStyle(color: colors.textSecondary, fontSize: 12)),
     ]);
   }
+}
+
+/// One row of a ranked comparison.
+class _Ranked {
+  final String title;
+  final String? logo;
+  final String? place;
+  final double kmL;
+
+  /// Average ₹ a litre over the fills that have a price.
+  final double? price;
+  final int fills;
+  final double? perKmOverride;
+
+  const _Ranked({
+    required this.title,
+    this.logo,
+    this.place,
+    required this.kmL,
+    this.price,
+    required this.fills,
+    this.perKmOverride,
+  });
+
+  double? get perKm =>
+      perKmOverride ?? (price != null && kmL > 0 ? price! / kmL : null);
 }
