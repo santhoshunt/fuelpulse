@@ -3,6 +3,7 @@ import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
+import '../models/pump.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
@@ -30,6 +31,7 @@ class RefillDetailScreen extends StatefulWidget {
 class _RefillDetailScreenState extends State<RefillDetailScreen> {
   final _db = DatabaseHelper();
   FuelLog? _log;
+  Pump? _pump;
   Vehicle? _vehicle;
   FuelLog? _previous;
   FuelLog? _next;
@@ -51,6 +53,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
       return;
     }
     final vehicle = await _db.getVehicle(log.vehicleId);
+    final pumps = await _db.getPumps();
     final chrono = await _db.getAllLogsChrono(log.vehicleId);
     final eff = calculateEfficiency(chrono);
     final levels =
@@ -59,6 +62,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
     if (!mounted) return;
     setState(() {
       _log = log;
+      _pump = pumps.where((p) => p.id == log.pumpId).firstOrNull;
       _vehicle = vehicle;
       _previous = i > 0 ? chrono[i - 1] : null;
       _next = i >= 0 && i < chrono.length - 1 ? chrono[i + 1] : null;
@@ -157,9 +161,12 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
                     Text(
-                        at == null
-                            ? log.timestamp
-                            : DateFormat('d MMM y, h:mm a').format(at),
+                        [
+                          if (_pump?.name.isNotEmpty ?? false) _pump!.name,
+                          at == null
+                              ? log.timestamp
+                              : DateFormat('d MMM y, h:mm a').format(at),
+                        ].join(' · '),
                         style: TextStyle(
                             color: colors.textSecondary, fontSize: 14)),
                   ],
@@ -198,6 +205,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
       ),
       _section('Refill', colors),
       _group(colors, [
+        if (_pump?.name.isNotEmpty ?? false) ('Petrol pump', _pump!.name),
         ('Fuel grade', log.fuelType),
         ('Odometer', '${_grouped.format(log.odometer)} km'),
         ('Litres', '${log.liters.toStringAsFixed(2)} L'),

@@ -9,8 +9,7 @@ import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/screens/settings_screen.dart';
-import 'package:fuelpulse/utils/fuel_type_manager.dart' as ftm;
-import 'package:fuelpulse/utils/pump_brand_manager.dart' as pbm;
+import 'package:fuelpulse/utils/brand_grades.dart';
 
 // Pins down what Settings does, so the split into section files can be
 // checked against it.
@@ -74,8 +73,7 @@ void main() {
     await _pumpSettings(tester);
     for (final header in [
       'Vehicles',
-      'Fuel Types',
-      'Pump Brands',
+      'Petrol pumps',
       'About',
       'Danger Zone',
     ]) {
@@ -88,12 +86,20 @@ void main() {
     expect(find.text('Data Management'), findsOneWidget);
   });
 
-  testWidgets('adds and renames a fuel type', (tester) async {
+  /// Settings → Petrol pumps → Brands and fuel grades.
+  Future<void> openBrands(WidgetTester tester) async {
     await _pumpSettings(tester);
+    await _tapVisible(tester, find.text('Petrol pumps'));
+    await _tapVisible(tester, find.text('Brands and fuel grades'));
+  }
 
-    await _tapVisible(tester, find.text('Add fuel type'));
+  testWidgets('adds and renames a fuel grade of one brand', (tester) async {
+    await openBrands(tester);
+    await _tapVisible(tester, find.text('Shell'));
+
+    await _tapVisible(tester, find.text('Add fuel grade'));
     await _submitDialog(tester, 'XP-95');
-    expect(await _real(tester, ftm.loadFuelTypes), ['Normal', 'XP-95']);
+    expect((await _real(tester, loadBrandGrades))['Shell'], contains('XP-95'));
 
     final editXp = find.descendant(
       of: find.ancestor(of: find.text('XP-95'), matching: find.byType(Row)),
@@ -101,31 +107,29 @@ void main() {
     );
     await _tapVisible(tester, editXp.first);
     await _submitDialog(tester, 'Speed 97');
-    expect(await _real(tester, ftm.loadFuelTypes), ['Normal', 'Speed 97']);
+    final shell = (await _real(tester, loadBrandGrades))['Shell']!;
+    expect(shell, contains('Speed 97'));
+    expect(shell, isNot(contains('XP-95')));
   });
 
   testWidgets('adds a pump brand and renames it on existing logs',
       (tester) async {
-    await _pumpSettings(tester);
+    await openBrands(tester);
 
-    await _tapVisible(tester, find.text('Add pump brand'));
+    await _tapVisible(tester, find.byTooltip('Add brand'));
     await _submitDialog(tester, 'Reliance');
-    expect(await _real(tester, pbm.loadPumpBrands), contains('Reliance'));
+    expect((await _real(tester, loadBrandGrades)).keys, contains('Reliance'));
 
     await _real(
         tester,
         () => _db.insertLog(_logFor('r1', 'Reliance')));
-    final editReliance = find.descendant(
-      of: find.ancestor(of: find.text('Reliance'), matching: find.byType(Row)),
-      matching: find.byIcon(Icons.edit_outlined),
-    );
-    await _tapVisible(tester, editReliance.first);
+    await _tapVisible(tester, find.text('Reliance'));
+    await _tapVisible(tester, find.text('Rename brand'));
     await _submitDialog(tester, 'Jio');
-    expect(await _real(tester, pbm.loadPumpBrands), contains('Jio'));
+    expect((await _real(tester, loadBrandGrades)).keys, contains('Jio'));
     final log = await _real(tester, () => _db.getLogById('r1'));
     expect(log!.pumpBrand, 'Jio');
   });
-
   testWidgets('Danger Zone wipes data only after DELETE is typed',
       (tester) async {
     await _real(tester, () async {

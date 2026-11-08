@@ -2,18 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
+import '../models/pump.dart';
 import '../models/vehicle.dart';
 import '../services/photo_scan.dart';
 import '../services/update_installer.dart';
 import '../theme/app_colors.dart';
 import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
-import '../utils/fuel_type_manager.dart';
-import '../utils/pump_brand_manager.dart';
+import '../utils/brand_grades.dart';
 import '../widgets/add_fuel_type_dialog.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/mode_switch.dart';
 import '../widgets/option_picker.dart';
+import 'pumps_screen.dart';
 import 'scan_photos_screen.dart';
 
 /// Add or edit a fill-up. One form serves both so the fields, cost sync and
@@ -75,14 +76,26 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   final _priceController = TextEditingController();
   final _costController = TextEditingController();
 
-  List<String> _pumpBrands = List.of(kDefaultPumpBrands);
+  List<Pump> _pumps = const [];
+
+  /// The pump chosen; null when a brand without a pump was picked (its
+  /// pump is created on save) or an edited log's pump was deleted.
+  Pump? _pump;
   String _selectedBrand = 'Shell';
+  Map<String, List<String>> _grades = const {};
   bool _fullTank = true;
   bool _saving = false;
   late bool _loading = _isEdit;
 
-  List<String> _fuelTypes = [kDefaultFuelType];
   String _selectedFuelType = kDefaultFuelType;
+
+  /// The brand's grades, plus the selected one when an edited log has a
+  /// grade no longer offered, so it still shows.
+  List<String> get _gradeChoices {
+    final g = List.of(_grades[_selectedBrand] ?? const [kDefaultFuelType]);
+    if (!g.contains(_selectedFuelType)) g.insert(0, _selectedFuelType);
+    return g;
+  }
 
   // Guards against listener ping-pong while one cost field updates the other.
   bool _syncingCost = false;
@@ -119,21 +132,22 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       final vehicle = await _db.getVehicle(widget.vehicleId!);
       final last = await _db.getLastLog(widget.vehicleId!);
       final chrono = await _db.getAllLogsChrono(widget.vehicleId!);
-      final types = await loadFuelTypes();
-      final brands = await loadPumpBrands();
+      final grades = await loadBrandGrades();
+      final pumps = await _db.getPumps();
       if (!mounted) return;
       setState(() {
         _vehicle = vehicle;
         _baseOdometer = last?.odometer;
         _others = chrono;
-        _fuelTypes = types;
-        if (!types.contains(_selectedFuelType)) {
-          _selectedFuelType = types.first;
-        }
-        _pumpBrands = brands;
-        if (!brands.contains(_selectedBrand)) {
-          _selectedBrand = brands.first;
-        }
+        _grades = grades;
+        _pumps = pumps;
+        // The starred pump, else the first, else the first brand.
+        final pump = pumps.where((p) => p.isFavourite).firstOrNull ??
+            pumps.firstOrNull;
+        _choose(pump,
+            brand: grades.containsKey(_selectedBrand)
+                ? _selectedBrand
+                : grades.keys.firstOrNull ?? _selectedBrand);
       });
       // After the base odometer is known: a TRIP read needs it.
       final prefill = widget.prefill;
@@ -156,13 +170,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     int? prevOdo;
     if (idx > 0) prevOdo = chrono[idx - 1].odometer;
 
-    final types = await loadFuelTypes();
-    // Tolerate a type that was deleted/renamed away — the log keeps its
-    // string, so inject it locally for display.
-    if (!types.contains(log.fuelType)) types.insert(0, log.fuelType);
-
-    final brands = await loadPumpBrands();
-    if (!brands.contains(log.pumpBrand)) brands.insert(0, log.pumpBrand);
+    final grades = await loadBrandGrades();
+    final pumps = await _db.getPumps();
 
     final vehicle = await _db.getVehicle(log.vehicleId);
     if (!mounted) return;
@@ -182,10 +191,13 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       _syncingCost = false;
       _notesController.text = log.notes;
       _fullTank = log.fullTank;
-      _fuelTypes = types;
-      _selectedFuelType = log.fuelType;
-      _pumpBrands = brands;
+      // A brand or grade no longer offered still shows: the log keeps its
+      // own strings.
+      _grades = grades;
+      _pumps = pumps;
+      _pump = pumps.where((p) => p.id == log.pumpId).firstOrNull;
       _selectedBrand = log.pumpBrand;
+      _selectedFuelType = log.fuelType;
       _loading = false;
     });
   }
@@ -503,83 +515,86 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     return null;
   }
 
-  Future<void> _pickFuelType() async {
+  /// Selects [pump], or [brand] when there is no pump. Keeps the grade if
+  /// the new brand sells it, else takes the brand's first grade.
+  void _choose(Pump? pump, {String? brand}) {
+    _pump = pump;
+    _selectedBrand = pump?.brand ?? brand ?? _selectedBrand;
+    final grades = _grades[_selectedBrand];
+    if (grades != null &&
+        grades.isNotEmpty &&
+        !grades.contains(_selectedFuelType)) {
+      _selectedFuelType = grades.first;
+    }
+  }
+
+  /// Saved pumps first, then each brand that has no pump yet: picking one
+  /// of those saves the fill-up with that brand and its pump is created.
+  Future<void> _pickPump() async {
+    final withPump = _pumps.map((p) => p.brand.toLowerCase()).toSet();
+    final bare = [
+      for (final b in _grades.keys)
+        if (!withPump.contains(b.toLowerCase())) b,
+      if (_pump == null &&
+          !_grades.containsKey(_selectedBrand) &&
+          !withPump.contains(_selectedBrand.toLowerCase()))
+        _selectedBrand,
+    ];
     final result = await showOptionPicker<String>(
       context: context,
-      title: 'Fuel Type',
-      options: _fuelTypes
-          .map((t) => PickerOption(value: t, label: t))
-          .toList(),
-      selected: _selectedFuelType,
-      actionLabel: 'Add fuel type',
+      title: 'Petrol pump',
+      options: [
+        for (final p in _pumps)
+          PickerOption(
+            value: 'p:${p.id}',
+            label: p.label,
+            leading: BrandLogo(brandName: p.brand, size: 28),
+          ),
+        for (final b in bare)
+          PickerOption(
+            value: 'b:$b',
+            label: b,
+            leading: BrandLogo(brandName: b, size: 28),
+          ),
+      ],
+      selected: _pump != null ? 'p:${_pump!.id}' : 'b:$_selectedBrand',
+      actionLabel: 'Add petrol pump',
     );
     if (!mounted || result == null) return;
     if (result is PickerPicked<String>) {
-      setState(() => _selectedFuelType = result.value);
+      final v = result.value;
+      setState(() => v.startsWith('p:')
+          ? _choose(_pumps.firstWhere((p) => 'p:${p.id}' == v))
+          : _choose(null, brand: v.substring(2)));
       return;
     }
-    // Footer action: add a new type, then select it.
-    final name = await showAddFuelTypeDialog(context);
-    if (name == null || name.trim().isEmpty) return;
-    final added = await addFuelType(name);
-    final types = await loadFuelTypes();
-    final match =
-        types.where((t) => t.toLowerCase() == name.trim().toLowerCase());
-    if (!added && match.isNotEmpty && mounted) {
-      _showSnack('"${match.first}" already exists.');
-    }
+    // Footer action: add a pump, then select it.
+    final added = await showPumpEditor(context);
+    final pumps = await _db.getPumps();
     if (!mounted) return;
     setState(() {
-      // Keep an orphaned type (deleted/renamed away) displayable.
-      if (!types.contains(_selectedFuelType)) {
-        types.insert(0, _selectedFuelType);
-      }
-      _fuelTypes = types;
+      _pumps = pumps;
+      if (added != null) _choose(added);
+    });
+  }
+
+  /// Adds a grade to the selected brand and selects it.
+  Future<void> _addGrade() async {
+    final name = await showAddFuelTypeDialog(context,
+        title: 'Add fuel grade · $_selectedBrand');
+    if (name == null || name.trim().isEmpty) return;
+    if (!_grades.containsKey(_selectedBrand)) await addBrand(_selectedBrand);
+    final added = await addGrade(_selectedBrand, name);
+    final grades = await loadBrandGrades();
+    if (!mounted) return;
+    final match = (grades[_selectedBrand] ?? const <String>[])
+        .where((g) => g.toLowerCase() == name.trim().toLowerCase());
+    if (!added && match.isNotEmpty) _showSnack('"${match.first}" already exists.');
+    setState(() {
+      _grades = grades;
       if (match.isNotEmpty) _selectedFuelType = match.first;
     });
   }
-
-  Future<void> _pickBrand() async {
-    final result = await showOptionPicker<String>(
-      context: context,
-      title: 'Pump Brand',
-      options: _pumpBrands
-          .map((b) => PickerOption(
-                value: b,
-                label: b,
-                leading: BrandLogo(brandName: b, size: 28),
-              ))
-          .toList(),
-      selected: _selectedBrand,
-      actionLabel: 'Add pump brand',
-    );
-    if (!mounted || result == null) return;
-    if (result is PickerPicked<String>) {
-      setState(() => _selectedBrand = result.value);
-      return;
-    }
-    // Footer action: add a new brand, then select it.
-    final name = await showAddFuelTypeDialog(context,
-        title: 'Add Pump Brand', hint: 'e.g. Reliance');
-    if (name == null || name.trim().isEmpty) return;
-    final added = await addPumpBrand(name);
-    final brands = await loadPumpBrands();
-    final match =
-        brands.where((b) => b.toLowerCase() == name.trim().toLowerCase());
-    if (!added && match.isNotEmpty && mounted) {
-      _showSnack('"${match.first}" already exists.');
-    }
-    if (!mounted) return;
-    setState(() {
-      // Keep an orphaned brand (deleted/renamed away) displayable.
-      if (!brands.contains(_selectedBrand)) {
-        brands.insert(0, _selectedBrand);
-      }
-      _pumpBrands = brands;
-      if (match.isNotEmpty) _selectedBrand = match.first;
-    });
-  }
-
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_saving) return;
@@ -627,6 +642,9 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           odometer: odometer,
           liters: liters,
           pumpBrand: _selectedBrand,
+          // With the brand, so a changed pump never leaves the old id.
+          pumpId: _pump?.id,
+          clearPumpId: _pump == null,
           fullTank: _fullTank,
           notes: _notesController.text.trim(),
           fuelType: _selectedFuelType,
@@ -648,6 +666,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           odometer: odometer,
           liters: liters,
           pumpBrand: _selectedBrand,
+          pumpId: _pump?.id,
           fullTank: _fullTank,
           notes: _notesController.text.trim(),
           fuelType: _selectedFuelType,
@@ -873,16 +892,16 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
 
               _section('Fuel', colors),
               PickerField(
-                label: 'Pump Brand',
+                label: 'Petrol pump',
                 icon: Icons.ev_station,
-                onTap: _pickBrand,
+                onTap: _pickPump,
                 child: Row(
                   children: [
                     BrandLogo(brandName: _selectedBrand, size: 26),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        _selectedBrand,
+                        _pump?.label ?? _selectedBrand,
                         style:
                             TextStyle(color: colors.textPrimary, fontSize: 16),
                         overflow: TextOverflow.ellipsis,
@@ -892,17 +911,30 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              PickerField(
-                label: 'Fuel Type',
-                icon: Icons.local_fire_department_outlined,
-                onTap: _pickFuelType,
-                child: Text(
-                  _selectedFuelType,
-                  style: TextStyle(color: colors.textPrimary, fontSize: 16),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 6),
+                child: Text('Fuel grade', style: note),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final g in _gradeChoices)
+                    ChoiceChip(
+                      label: Text(g),
+                      selected: g == _selectedFuelType,
+                      onSelected: (_) =>
+                          setState(() => _selectedFuelType = g),
+                    ),
+                  ActionChip(
+                    avatar: const Icon(Icons.add, size: 18),
+                    label: const Text('Grade'),
+                    tooltip: 'Add fuel grade',
+                    onPressed: _addGrade,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),              TextFormField(
                 controller: _litersController,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),

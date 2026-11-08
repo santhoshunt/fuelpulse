@@ -9,8 +9,7 @@ import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/services/backup_payload.dart';
 import 'package:fuelpulse/utils/constants.dart';
-import 'package:fuelpulse/utils/fuel_type_manager.dart';
-import 'package:fuelpulse/utils/pump_brand_manager.dart';
+import 'package:fuelpulse/utils/brand_grades.dart';
 import 'package:fuelpulse/utils/vehicle_manager.dart';
 
 const _bike = Vehicle(
@@ -59,8 +58,8 @@ void main() {
     final db = DatabaseHelper();
     await db.insertVehicle(_bike);
     await setActiveVehicle('bike');
-    await addFuelType('XP-95');
-    await addPumpBrand('Reliance');
+    await addGrade('Shell', 'XP-95');
+    await addBrand('Reliance');
     await DatabaseHelper().insertLogs([_log('1'), _log('2', odometer: 1500)]);
 
     final payload = await buildBackupPayload();
@@ -69,7 +68,9 @@ void main() {
     expect((payload['logs'] as List).length, 2);
     // Costs travel inside each log map.
     expect(((payload['logs'] as List).first as Map)['totalCost'], 1000);
-    expect(payload['fuelTypes'], ['Normal', 'XP-95']);
+    // The map, plus the two flat lists v2.x restores from.
+    expect((payload['brandGrades'] as Map)['Shell'], contains('XP-95'));
+    expect(payload['fuelTypes'], containsAll(['Normal', 'XP-95']));
     expect(payload['pumpBrands'], [...kDefaultPumpBrands, 'Reliance']);
     expect((payload['vehicles'] as List).map((v) => (v as Map)['id']),
         [kDefaultVehicleId, 'bike']);
@@ -109,7 +110,7 @@ void main() {
     expect(await db.getLogById('device-only'), isNotNull);
   });
 
-  test('settings, fuel types and pump brands apply on replace only',
+  test('settings and brand grades apply on replace only',
       () async {
     final payload = {
       'app': 'fuelpulse',
@@ -123,19 +124,20 @@ void main() {
     final db = DatabaseHelper();
     await restoreBackup(payload, replace: false);
     expect((await db.getVehicle(kDefaultVehicleId))!.tankCapacity, isNull);
-    expect(await loadFuelTypes(), ['Normal']);
-    expect(await loadPumpBrands(), kDefaultPumpBrands);
+    expect(await loadBrandGrades(),
+        seedBrandGrades(kDefaultPumpBrands, const ['Normal']));
 
     await restoreBackup(payload, replace: true);
     // A v2 file's global tank capacity lands on the default vehicle.
     expect((await db.getVehicle(kDefaultVehicleId))!.tankCapacity, 12.5);
-    expect(await loadFuelTypes(), ['Normal', 'XP-100']);
-    expect(await loadPumpBrands(), ['Shell', 'Reliance']);
+    // A format 2 file's two lists seed the map as an upgrade does.
+    expect(await loadBrandGrades(),
+        seedBrandGrades(['Shell', 'Reliance'], ['Normal', 'XP-100']));
   });
 
   test('a v1 backup without pumpBrands restores cleanly on replace',
       () async {
-    await addPumpBrand('Reliance');
+    await addBrand('Reliance');
     final payload = {
       'app': 'fuelpulse',
       'version': 1,
@@ -145,7 +147,7 @@ void main() {
 
     await restoreBackup(payload, replace: true);
     // Absent in the backup means the local list is left alone.
-    expect(await loadPumpBrands(), [...kDefaultPumpBrands, 'Reliance']);
+    expect((await loadBrandGrades()).keys, [...kDefaultPumpBrands, 'Reliance']);
   });
 
   test('a v3 replace round-trips every vehicle and the active one',

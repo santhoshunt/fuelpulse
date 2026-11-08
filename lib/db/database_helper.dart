@@ -232,10 +232,12 @@ class DatabaseHelper {
   // ── Logs ──────────────────────────────────────────────────────────────
 
   /// Insert a new fuel log entry.
+  /// A log saved with a brand but no pump gets the brand's pump.
   Future<void> insertLog(FuelLog log) async {
     final db = await database;
     await db.insert('fuel_logs', log.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace);
+    if (log.pumpId == null) await linkLogsToPumps(db);
   }
 
   /// Update an existing fuel log entry.
@@ -247,6 +249,7 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [log.id],
     );
+    if (log.pumpId == null) await linkLogsToPumps(db);
   }
 
   /// Delete a fuel log entry by ID.
@@ -326,27 +329,31 @@ class DatabaseHelper {
     await db.delete('fuel_logs');
   }
 
-  /// Rename a fuel type on every log referencing it.
+  /// Rename a pump brand on every log and pump referencing it.
+  /// Returns the number of updated logs.
+  Future<int> renamePumpBrand(String from, String to) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      await txn.update('pumps', {'brand': to},
+          where: 'brand = ?', whereArgs: [from]);
+      return txn.update(
+        'fuel_logs',
+        {'pumpBrand': to},
+        where: 'pumpBrand = ?',
+        whereArgs: [from],
+      );
+    });
+  }
+
+  /// Rename one brand's fuel grade on that brand's logs.
   /// Returns the number of updated rows.
-  Future<int> renameFuelType(String from, String to) async {
+  Future<int> renameGrade(String brand, String from, String to) async {
     final db = await database;
     return db.update(
       'fuel_logs',
       {'fuelType': to},
-      where: 'fuelType = ?',
-      whereArgs: [from],
-    );
-  }
-
-  /// Rename a pump brand on every log referencing it.
-  /// Returns the number of updated rows.
-  Future<int> renamePumpBrand(String from, String to) async {
-    final db = await database;
-    return db.update(
-      'fuel_logs',
-      {'pumpBrand': to},
-      where: 'pumpBrand = ?',
-      whereArgs: [from],
+      where: 'pumpBrand = ? AND fuelType = ?',
+      whereArgs: [brand, from],
     );
   }
 
@@ -520,6 +527,15 @@ class DatabaseHelper {
       await txn.insert('pumps', p.toMap(),
           conflictAlgorithm: ConflictAlgorithm.replace);
     });
+  }
+
+  /// How many fill-ups each pump has, by pump id.
+  Future<Map<String, int>> pumpUseCounts() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+        'SELECT pumpId, COUNT(*) AS n FROM fuel_logs '
+        'WHERE pumpId IS NOT NULL GROUP BY pumpId');
+    return {for (final r in rows) r['pumpId'] as String: r['n'] as int};
   }
 
   /// Logs keep their pump id and brand, so they still show the brand.

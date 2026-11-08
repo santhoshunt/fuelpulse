@@ -6,8 +6,7 @@ import '../models/vehicle.dart';
 import '../theme/palettes.dart';
 import '../utils/appearance_prefs.dart';
 import '../utils/constants.dart';
-import '../utils/fuel_type_manager.dart';
-import '../utils/pump_brand_manager.dart';
+import '../utils/brand_grades.dart';
 import '../utils/vehicle_manager.dart';
 
 /// Sentinel validated on restore so a foreign backup file is rejected.
@@ -25,16 +24,17 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   final db = DatabaseHelper();
   final logs = await db.getEveryLogChrono();
   final vehicles = await db.getVehicles();
-  final fuelTypes = await loadFuelTypes();
-  final pumpBrands = await loadPumpBrands();
+  final brandGrades = await loadBrandGrades();
   final prefs = await SharedPreferences.getInstance();
   return {
     'app': kBackupApp,
     'version': kBackupVersion,
     'vehicles': vehicles.map((v) => v.toMap()).toList(),
     'logs': logs.map((l) => l.toMap()).toList(),
-    'fuelTypes': fuelTypes,
-    'pumpBrands': pumpBrands,
+    // From v3.0.0. The two flat lists stay so v2.x can restore the file.
+    'brandGrades': brandGrades,
+    'fuelTypes': allGrades(brandGrades),
+    'pumpBrands': brandGrades.keys.toList(),
     'settings': {
       'activeVehicleId': prefs.getString(kActiveVehicleKey),
       // From v2.2.0. Older files carry themeAccent and themeLight instead,
@@ -139,14 +139,27 @@ Future<int> restoreBackup(Map<String, dynamic> data,
       await prefs.remove(kActiveVehicleKey);
     }
 
+    // A v3.0.0 file carries the map; an older one only its two lists,
+    // which seed it the same way an upgrade does.
+    final grades = data['brandGrades'];
     final types = data['fuelTypes'];
-    if (types is List && types.isNotEmpty) {
-      await saveFuelTypes(types.map((t) => t.toString()).toList());
-    }
-
     final brands = data['pumpBrands'];
-    if (brands is List && brands.isNotEmpty) {
-      await savePumpBrands(brands.map((b) => b.toString()).toList());
+    if (grades is Map && grades.isNotEmpty) {
+      await saveBrandGrades({
+        for (final e in grades.entries)
+          '${e.key}': (e.value as List).map((g) => '$g').toList(),
+      });
+    } else if (brands is List && brands.isNotEmpty ||
+        types is List && types.isNotEmpty) {
+      final current = await loadBrandGrades();
+      await saveBrandGrades(seedBrandGrades(
+        brands is List && brands.isNotEmpty
+            ? brands.map((b) => '$b').toList()
+            : current.keys.toList(),
+        types is List && types.isNotEmpty
+            ? types.map((t) => '$t').toList()
+            : const [kDefaultFuelType],
+      ));
     }
   } else {
     final deviceIds = (await db.getVehicles()).map((v) => v.id).toSet();

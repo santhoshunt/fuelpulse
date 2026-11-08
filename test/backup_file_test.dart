@@ -11,9 +11,7 @@ import 'package:fuelpulse/services/backup_codec.dart';
 import 'package:fuelpulse/services/backup_file.dart';
 import 'package:fuelpulse/services/backup_payload.dart';
 import 'package:fuelpulse/services/drive_backup_service.dart';
-import 'package:fuelpulse/utils/constants.dart';
-import 'package:fuelpulse/utils/fuel_type_manager.dart';
-import 'package:fuelpulse/utils/pump_brand_manager.dart';
+import 'package:fuelpulse/utils/brand_grades.dart';
 
 FuelLog _log(String id, {int odometer = 1000}) => FuelLog(
       vehicleId: kDefaultVehicleId,
@@ -48,8 +46,9 @@ void main() {
     final db = DatabaseHelper();
     final car = await db.getVehicle(kDefaultVehicleId);
     await db.updateVehicle(car!.copyWith(tankCapacity: 11.5));
-    await addFuelType('XP-95');
-    await addPumpBrand('Reliance');
+    await addGrade('Shell', 'XP-95');
+    await addBrand('Reliance');
+    final grades = await loadBrandGrades();
     await db.insertLogs([_log('a'), _log('b', odometer: 1200)]);
 
     // Payload -> gzip -> real temp file, exactly what exportBackupFile shares.
@@ -72,8 +71,7 @@ void main() {
     expect(a!.totalCost, 1050);
     expect(a.fuelType, 'XP-95');
     expect((await db.getVehicle(kDefaultVehicleId))!.tankCapacity, 11.5);
-    expect(await loadFuelTypes(), ['Normal', 'XP-95']);
-    expect(await loadPumpBrands(), [...kDefaultPumpBrands, 'Reliance']);
+    expect(await loadBrandGrades(), grades);
   });
 
   test('merge through the file path is id-keyed and idempotent', () async {
