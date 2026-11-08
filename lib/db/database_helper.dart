@@ -442,8 +442,17 @@ class DatabaseHelper {
   /// upserts [logs] by id, in one transaction so a failure part-way adds
   /// nothing. With [ensureDefault], re-creates the default vehicle first if
   /// it was deleted, for logs the caller assigned to it.
-  Future<void> mergeData(List<Vehicle> newVehicles, List<FuelLog> logs,
-      {bool ensureDefault = false}) async {
+  /// Pumps, workshops and service types the device already has (by id)
+  /// win; services are upserted like logs.
+  Future<void> mergeData(
+    List<Vehicle> newVehicles,
+    List<FuelLog> logs, {
+    bool ensureDefault = false,
+    List<Pump> pumps = const [],
+    List<Workshop> workshops = const [],
+    List<ServiceType> serviceTypes = const [],
+    List<ServiceRecord> services = const [],
+  }) async {
     final db = await database;
     await db.transaction((txn) async {
       for (final v in newVehicles) {
@@ -456,6 +465,22 @@ class DatabaseHelper {
       if (ensureDefault) {
         await txn.insert('vehicles', defaultVehicle().toMap(),
             conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      for (final p in pumps) {
+        await txn.insert('pumps', {...p.toMap(), 'isFavourite': 0},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      for (final w in workshops) {
+        await txn.insert('workshops', w.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      for (final t in serviceTypes) {
+        await txn.insert('service_types', t.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      for (final s in services) {
+        await txn.insert('services', s.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace);
       }
       for (final log in logs) {
         await txn.insert('fuel_logs', log.toMap(),

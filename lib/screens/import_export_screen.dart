@@ -3,6 +3,9 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../utils/service_csv.dart';
+import '../utils/vehicle_manager.dart';
+
 import 'settings/data_section.dart';
 import 'settings/drive_section.dart';
 import 'settings/settings_widgets.dart';
@@ -15,6 +18,19 @@ class ImportExportScreen extends StatelessWidget {
 
   const ImportExportScreen({super.key, required this.onRestored});
 
+  /// Into the active vehicle, as the fuel CSV import does.
+  Future<void> _importServices(BuildContext context) async {
+    try {
+      final vehicle = await loadActiveVehicle();
+      final n = await importServicesCsv(vehicleId: vehicle.id);
+      if (n == null || !context.mounted) return;
+      showSettingsSnack(context,
+          'Imported $n ${n == 1 ? 'service' : 'services'} into ${vehicle.name}.');
+    } catch (e) {
+      if (context.mounted) showSettingsSnack(context, 'Import failed: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -23,6 +39,21 @@ class ImportExportScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           DataSection(onRestored: onRestored),
+          const SizedBox(height: 32),
+          sectionHeader('Service CSV'),
+          const SizedBox(height: 12),
+          settingsGroup([
+            SettingsRow(
+              icon: Icons.description_outlined,
+              label: 'Service CSV template',
+              onTap: exportServiceTemplate,
+            ),
+            SettingsRow(
+              icon: Icons.upload_file_outlined,
+              label: 'Import services from CSV',
+              onTap: () => _importServices(context),
+            ),
+          ]),
           // google_sign_in 6.x only has an Android implementation here.
           if (!kIsWeb && Platform.isAndroid) ...[
             const SizedBox(height: 32),
