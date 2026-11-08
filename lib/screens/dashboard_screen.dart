@@ -120,8 +120,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (latest == null || after == null) return null;
     final avg = _average;
     final r = _reading;
-    if (r != null && avg != null && avg > 0) {
-      final left = (after - (r.km - latest.odometer) / avg).clamp(0.0, after);
+    final left = tankNow(
+        afterRefill: after,
+        refillOdometer: latest.odometer,
+        reading: r,
+        avgKmL: avg);
+    if (r != null && avg != null && left != null) {
       return (
         litres: left,
         caption: 'Left now, about',

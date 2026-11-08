@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_mileage">Average km/L, with last and best</string>
+    <string name="widget_quick_add">Add a refill or scan photos</string>
+    <string name="widget_tank">Fuel in the tank and the range it gives</string>
+    <string name="widget_service">The next service and how far off it is</string>
+    <string name="widget_spend">This month\'s fuel spend and the last six months</string>
+    <string name="widget_best_pump">The pump with the best km/L</string>
+    <string name="widget_odometer">Latest odometer reading, with Update</string>
+</resources>

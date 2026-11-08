@@ -28,6 +28,19 @@ Future<OdometerReading?> loadReading(String vehicleId) async {
   }
 }
 
+/// Litres left now: the level right after the last refill, less what the
+/// km driven since burned at [avgKmL]. Null without a reading or average.
+double? tankNow({
+  required double afterRefill,
+  required int refillOdometer,
+  required OdometerReading? reading,
+  required double? avgKmL,
+}) {
+  if (reading == null || avgKmL == null || avgKmL <= 0) return null;
+  return (afterRefill - (reading.km - refillOdometer) / avgKmL)
+      .clamp(0.0, afterRefill);
+}
+
 Future<void> saveReading(String vehicleId, int km) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString(_key(vehicleId),

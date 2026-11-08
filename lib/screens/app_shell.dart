@@ -2,16 +2,24 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
+import '../db/database_helper.dart';
 import '../services/drive_backup_service.dart';
+import '../services/home_widgets.dart';
 import '../services/service_reminders.dart';
 import '../services/update_downloader.dart';
 import '../services/update_installer.dart';
 import '../services/update_prefs.dart';
 import '../services/update_service.dart';
+import '../utils/odometer_reading.dart';
+import '../utils/page_routes.dart';
+import '../utils/vehicle_manager.dart';
 import '../widgets/update_banner.dart';
 import 'analytics_screen.dart';
 import 'dashboard_screen.dart';
+import 'entry_form_screen.dart';
 import 'fuel_list_screen.dart';
+import 'scan_photos_screen.dart';
 import 'service_screen.dart';
 import 'settings_screen.dart';
 
@@ -31,9 +39,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _reload = ValueNotifier<int>(0);
   int _tab = 0;
 
+  StreamSubscription<Uri?>? _widgetTaps;
+
   @override
   void initState() {
     super.initState();
+    if (HomeWidgets.supported) {
+      // The home screen widgets show what the app holds; keep them current.
+      _reload.addListener(HomeWidgets.refresh);
+      unawaited(HomeWidgets.refresh());
+      _widgetTaps = HomeWidget.widgetClicked.listen(_openFromWidget);
+      HomeWidget.initiallyLaunchedFromHomeWidget().then(_openFromWidget);
+    }
     // Scheduled Drive backup, fire-and-forget so it never blocks startup;
     // failures surface in Settings via DriveBackupService.lastError().
     // google_sign_in 6.x only has an Android implementation here.
@@ -55,8 +72,43 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
+  /// A widget tap's fuelpulse:// link: a tab, or a form opened over it.
+  Future<void> _openFromWidget(Uri? uri) async {
+    if (uri == null || !mounted) return;
+    const tabs = {'dashboard': 0, 'fuel': 1, 'service': 2, 'analytics': 3};
+    final tab = tabs[uri.host];
+    if (tab != null) {
+      _select(tab);
+      return;
+    }
+    final v = await loadActiveVehicle();
+    if (!mounted) return;
+    switch (uri.host) {
+      case 'add':
+        await Navigator.push(
+            context, SmoothPageRoute(page: EntryFormScreen(vehicleId: v.id)));
+      case 'scan':
+        final last = await DatabaseHelper().getLastLog(v.id);
+        if (!mounted) return;
+        final outcome = await Navigator.push<ScanOutcome>(context,
+            SmoothPageRoute(page: ScanPhotosScreen(lastOdometer: last?.odometer)));
+        if (outcome == null || !mounted) return;
+        await Navigator.push(
+            context,
+            SmoothPageRoute(
+                page: EntryFormScreen(
+                    vehicleId: v.id,
+                    prefill: outcome.isEmpty ? null : outcome)));
+      case 'odometer':
+        await showOdometerDialog(context,
+            vehicleId: v.id, vehicleName: v.name);
+    }
+    _reload.value++;
+  }
+
   @override
   void dispose() {
+    _widgetTaps?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _reload.dispose();
     super.dispose();
