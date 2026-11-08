@@ -2,11 +2,13 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
 import '../models/vehicle.dart';
 import '../services/photo_scan.dart';
 import '../services/update_installer.dart';
+import '../theme/app_colors.dart';
 import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/fuel_type_manager.dart';
@@ -50,6 +52,21 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   /// Odometer that KM mode counts from: the latest log when adding, the log
   /// just before this one when editing. Null disables KM mode.
   int? _baseOdometer;
+
+  /// The vehicle's logs oldest first, without the one being edited: the
+  /// neighbours a changed date is checked against.
+  List<FuelLog> _others = const [];
+
+  /// When the fill-up happened. Defaults to now when adding.
+  DateTime _when = DateTime.now();
+
+  /// Set once the date is changed by hand, so an edit that leaves it alone
+  /// writes the stored timestamp back unchanged.
+  bool _whenTouched = false;
+
+  /// Odometer of the next fill-up after [_when], for the warning when a
+  /// backdated fill-up reads higher than what came after it.
+  int? _nextOdometer;
 
   final _odoController = TextEditingController();
   final _litersController = TextEditingController();
@@ -102,12 +119,14 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     try {
       final vehicle = await _db.getVehicle(widget.vehicleId!);
       final last = await _db.getLastLog(widget.vehicleId!);
+      final chrono = await _db.getAllLogsChrono(widget.vehicleId!);
       final types = await loadFuelTypes();
       final brands = await loadPumpBrands();
       if (!mounted) return;
       setState(() {
         _vehicle = vehicle;
         _baseOdometer = last?.odometer;
+        _others = chrono;
         _fuelTypes = types;
         if (!types.contains(_selectedFuelType)) {
           _selectedFuelType = types.first;
@@ -150,6 +169,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       _original = log;
       _vehicle = vehicle;
       _baseOdometer = prevOdo;
+      _others = [...chrono]..removeWhere((l) => l.id == log.id);
+      _when = DateTime.tryParse(log.timestamp) ?? DateTime.now();
       // Prefill without triggering the cost-linking listeners.
       _syncingCost = true;
       _odoController.text = log.odometer.toString();
@@ -524,6 +545,13 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       final proceed = await _showBackwardOdoWarning();
       if (!proceed) return;
     }
+    // A backdated fill-up can't read more than the one that came after it.
+    if (!_isEdit && _nextOdometer != null && odometer > _nextOdometer!) {
+      final proceed = await _showOdoWarning(
+          'New odometer is more than the next reading ($_nextOdometer km). '
+          'Save anyway?');
+      if (!proceed) return;
+    }
 
     setState(() => _saving = true);
 
@@ -539,6 +567,10 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           fullTank: _fullTank,
           notes: _notesController.text.trim(),
           fuelType: _selectedFuelType,
+          // Untouched, the stored string goes back as it was: logs sort by
+          // it, and a CSV import may have written another format.
+          timestamp:
+              _whenTouched ? _when.toIso8601String() : _original!.timestamp,
           totalCost: newTotal,
           clearTotalCost: newTotal == null,
           pricePerLitre: newPrice,
@@ -549,7 +581,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
         final log = FuelLog(
           vehicleId: widget.vehicleId!,
           id: FuelLog.generateId(),
-          timestamp: DateTime.now().toIso8601String(),
+          timestamp: _when.toIso8601String(),
           odometer: odometer,
           liters: liters,
           pumpBrand: _selectedBrand,
@@ -590,13 +622,15 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
         false;
   }
 
-  Future<bool> _showBackwardOdoWarning() async {
+  Future<bool> _showBackwardOdoWarning() => _showOdoWarning(
+      'New odometer is less than last reading. Save anyway?');
+
+  Future<bool> _showOdoWarning(String message) async {
     return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Odometer Warning'),
-            content: const Text(
-                'New odometer is less than last reading. Save anyway?'),
+            content: Text(message),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
@@ -612,6 +646,44 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
 
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _pickWhen() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _when,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+        context: context, initialTime: TimeOfDay.fromDateTime(_when));
+    if (!mounted) return;
+    final t = time ?? TimeOfDay.fromDateTime(_when);
+    _setWhen(DateTime(date.year, date.month, date.day, t.hour, t.minute));
+  }
+
+  /// Moves the fill-up to [when] and re-reads its neighbours by date: KM
+  /// mode then counts from the fill-up just before it.
+  void _setWhen(DateTime when) {
+    FuelLog? prev;
+    FuelLog? next;
+    for (final l in _others) {
+      final at = DateTime.tryParse(l.timestamp);
+      if (at == null) continue;
+      if (!at.isAfter(when)) {
+        prev = l;
+      } else {
+        next ??= l;
+      }
+    }
+    setState(() {
+      _when = when;
+      _whenTouched = true;
+      _baseOdometer = prev?.odometer;
+      _nextOdometer = next?.odometer;
+      if (_baseOdometer == null) _isKmMode = false;
+    });
   }
 
   void _switchMode(bool km) {
@@ -636,7 +708,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final colors = AppColors.of(context);
     final action = _isEdit ? 'Edit Fill-up' : 'Add Fill-up';
     final title = _vehicle == null ? action : '$action · ${_vehicle!.name}';
 
@@ -647,41 +719,45 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       );
     }
 
+    final odo = int.tryParse(_odoController.text.trim());
+    final note = TextStyle(color: colors.textSecondary, fontSize: 12);
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      appBar: AppBar(title: Text(title)),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_scanSupported) ...[
+              if (_scanSupported && !_isEdit) ...[
                 _buildScanPanel(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 4),
               ],
 
-              // Mode switch
+              _section('When', colors),
+              PickerField(
+                label: 'Date and time',
+                icon: Icons.event_outlined,
+                onTap: _pickWhen,
+                child: Text(
+                  DateFormat('d MMM y, h:mm a').format(_when),
+                  style: TextStyle(color: colors.textPrimary, fontSize: 16),
+                ),
+              ),
+
+              _section('Reading', colors),
               ModeSwitch(
                 isKmMode: _isKmMode,
                 kmModeEnabled: _baseOdometer != null,
                 onChanged: _switchMode,
               ),
-              const SizedBox(height: 20),
-
-              // Odometer / KM input
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _odoController,
                 keyboardType: TextInputType.number,
-                onChanged: (_) {
-                  if (_odoFromPhoto) setState(() => _odoFromPhoto = false);
-                },
+                onChanged: (_) => setState(() => _odoFromPhoto = false),
                 decoration: InputDecoration(
                   labelText: _isKmMode ? 'KM Driven' : 'Odometer (km)',
                   prefixIcon: const Icon(Icons.speed),
@@ -702,21 +778,60 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   return null;
                 },
               ),
-              if (_isKmMode && _baseOdometer != null) ...[
+              if (_isKmMode && _baseOdometer != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),
                   child: Text(
                     _isEdit
                         ? 'Previous odometer: $_baseOdometer km'
                         : 'Last odometer: $_baseOdometer km',
-                    style:
-                        const TextStyle(color: kTextMuted, fontSize: 12),
+                    style: note,
+                  ),
+                )
+              else if (!_isKmMode &&
+                  _baseOdometer != null &&
+                  odo != null &&
+                  odo >= _baseOdometer!)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Text(
+                    'Last reading $_baseOdometer km, so '
+                    '${odo - _baseOdometer!} km since the last refill.',
+                    style: note,
                   ),
                 ),
-              ],
-              const SizedBox(height: 16),
 
-              // Liters
+              _section('Fuel', colors),
+              PickerField(
+                label: 'Pump Brand',
+                icon: Icons.ev_station,
+                onTap: _pickBrand,
+                child: Row(
+                  children: [
+                    BrandLogo(brandName: _selectedBrand, size: 26),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _selectedBrand,
+                        style:
+                            TextStyle(color: colors.textPrimary, fontSize: 16),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              PickerField(
+                label: 'Fuel Type',
+                icon: Icons.local_fire_department_outlined,
+                onTap: _pickFuelType,
+                child: Text(
+                  _selectedFuelType,
+                  style: TextStyle(color: colors.textPrimary, fontSize: 16),
+                ),
+              ),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _litersController,
                 keyboardType:
@@ -739,9 +854,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   return null;
                 },
               ),
-              const SizedBox(height: 16),
-
-              // Cost (optional) — the two fields keep each other in sync
+              const SizedBox(height: 12),
+              // Cost (optional): the two fields keep each other in sync.
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -772,43 +886,32 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-
-              // Fuel type picker
-              PickerField(
-                label: 'Fuel Type',
-                icon: Icons.local_fire_department_outlined,
-                onTap: _pickFuelType,
-                child: Text(
-                  _selectedFuelType,
-                  style: const TextStyle(color: kTextPrimary, fontSize: 16),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Brand picker
-              PickerField(
-                label: 'Pump Brand',
-                icon: Icons.ev_station,
-                onTap: _pickBrand,
-                child: Row(
-                  children: [
-                    BrandLogo(brandName: _selectedBrand, size: 26),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _selectedBrand,
-                        style: const TextStyle(
-                            color: kTextPrimary, fontSize: 16),
-                        overflow: TextOverflow.ellipsis,
+              const SizedBox(height: 12),
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.local_gas_station_outlined,
+                          color: colors.textSecondary, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text('Full Tank',
+                            style: TextStyle(
+                                color: colors.textPrimary, fontSize: 15)),
                       ),
-                    ),
-                  ],
+                      Switch(
+                        value: _fullTank,
+                        onChanged: (v) => setState(() => _fullTank = v),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
 
-              // Notes
+              _section('Notes', colors),
               TextFormField(
                 controller: _notesController,
                 maxLines: 2,
@@ -817,55 +920,12 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   prefixIcon: Icon(Icons.note_outlined),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Full tank switch
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.06),
-                      Colors.white.withValues(alpha: 0.02),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  border:
-                      Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.local_gas_station_outlined,
-                        color: kTextSecondary, size: 20),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Full Tank',
-                        style:
-                            TextStyle(color: kTextPrimary, fontSize: 15),
-                      ),
-                    ),
-                    Switch(
-                      value: _fullTank,
-                      onChanged: (v) => setState(() => _fullTank = v),
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 28),
 
-              // Save button
               SizedBox(
                 height: 52,
                 child: ElevatedButton(
                   onPressed: _saving ? null : _save,
-                  style: ElevatedButton.styleFrom(
-                    elevation: 6,
-                    shadowColor: accent.withValues(alpha: 0.4),
-                  ),
                   child: _saving
                       ? const SizedBox(
                           width: 22,
@@ -882,4 +942,13 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       ),
     );
   }
+
+  Widget _section(String title, AppColors colors) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+        child: Text(title,
+            style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w500)),
+      );
 }
