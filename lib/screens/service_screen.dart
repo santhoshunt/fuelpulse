@@ -8,6 +8,7 @@ import '../models/service_record.dart';
 import '../models/service_type.dart';
 import '../models/vehicle.dart';
 import '../models/workshop.dart';
+import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../utils/page_routes.dart';
 import '../utils/service_schedule.dart';
@@ -68,6 +69,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
   Map<String, Workshop> _workshops = const {};
   int? _odometer;
   bool _loading = true;
+  bool _notificationsOn = true;
 
   @override
   void initState() {
@@ -97,6 +99,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
     final types = await _db.getServiceTypes();
     final ws = await _db.getWorkshops();
     final odo = await latestOdometer(vehicle.id);
+    final on = await ServiceReminders.instance.enabled();
     if (!mounted) return;
     setState(() {
       _vehicle = vehicle;
@@ -104,6 +107,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
       _types = {for (final t in types) t.id: t};
       _workshops = {for (final w in ws) w.id: w};
       _odometer = odo;
+      _notificationsOn = on;
       _loading = false;
     });
   }
@@ -169,6 +173,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                     if (next != null) ...[
                       _section('Next scheduled', colors),
                       _nextCard(next, colors),
+                      if (!_notificationsOn) _notificationsOff(colors),
                     ],
                     _section('History', colors),
                     _history(colors),
@@ -210,6 +215,29 @@ class _ServiceScreenState extends State<ServiceScreen> {
               onPressed: () => _open(),
               icon: const Icon(Icons.add),
               label: const Text('Add service'),
+            ),
+          ],
+        ),
+      );
+
+  /// Reminders still show here; this says the phone won't.
+  Widget _notificationsOff(AppColors colors) => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Row(
+          children: [
+            Icon(Icons.notifications_off_outlined,
+                size: 20, color: colors.textSecondary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('Notifications are off, so reminders show only here.',
+                  style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+            ),
+            TextButton(
+              onPressed: () async {
+                await ServiceReminders.instance.askPermission();
+                await _load();
+              },
+              child: const Text('Turn on'),
             ),
           ],
         ),

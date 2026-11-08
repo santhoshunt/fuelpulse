@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../services/drive_backup_service.dart';
+import '../services/service_reminders.dart';
 import '../services/update_downloader.dart';
 import '../services/update_installer.dart';
 import '../services/update_prefs.dart';
@@ -39,6 +40,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (!kIsWeb && Platform.isAndroid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(DriveBackupService().checkAndRunScheduled());
+        // Restores and edits change schedules; rebuild the reminders.
+        unawaited(ServiceReminders.instance.rescheduleAll());
       });
     }
     if (_updatesSupported) {

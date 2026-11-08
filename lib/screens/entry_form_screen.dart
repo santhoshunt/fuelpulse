@@ -5,6 +5,7 @@ import '../models/fuel_log.dart';
 import '../models/pump.dart';
 import '../models/vehicle.dart';
 import '../services/photo_scan.dart';
+import '../services/service_reminders.dart';
 import '../services/update_installer.dart';
 import '../theme/app_colors.dart';
 import '../utils/constants.dart';
@@ -675,6 +676,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
         );
         await _db.insertLog(log);
       }
+      await ServiceReminders.instance
+          .checkKmDue(_original?.vehicleId ?? widget.vehicleId!, odometer);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       debugPrint('Error saving entry: $e');

@@ -5,6 +5,7 @@ import '../db/database_helper.dart';
 import '../models/service_record.dart';
 import '../models/service_type.dart';
 import '../models/workshop.dart';
+import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../widgets/option_picker.dart';
 import 'service_types_screen.dart';
@@ -202,6 +203,9 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     } else {
       await _db.updateService(record);
     }
+    // The first dated schedule asks for the notification permission.
+    await ServiceReminders.instance
+        .rescheduleAll(ask: record.nextDueDate != null);
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -227,6 +231,7 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     );
     if (ok != true) return;
     await _db.deleteService(_r!.id);
+    await ServiceReminders.instance.rescheduleAll();
     if (mounted) Navigator.pop(context, true);
   }
 

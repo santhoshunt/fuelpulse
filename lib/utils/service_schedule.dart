@@ -39,22 +39,29 @@ class NextService {
 /// one when choosing which comes first.
 const _kmPerDay = 30;
 
-/// The schedule due soonest among [records] (any order). A record's
-/// schedule stays open until a later record shares one of its service
-/// types: an oil change does not cancel a general service that is due.
+/// The records in [records] (any order) whose next service is still open:
+/// it has a due km or date, and no later record shares one of its service
+/// types. An oil change does not cancel a general service that is due.
+List<ServiceRecord> openSchedules(List<ServiceRecord> records) {
+  final byDate = [...records]
+    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  return [
+    for (var i = 0; i < byDate.length; i++)
+      if ((byDate[i].nextDueKm != null || byDate[i].nextDueDate != null) &&
+          !byDate
+              .skip(i + 1)
+              .any((later) => later.typeIds.any(byDate[i].typeIds.contains)))
+        byDate[i],
+  ];
+}
+
+/// The open schedule due soonest among [records].
 NextService? nextServiceFor(List<ServiceRecord> records, int? currentOdometer,
     {DateTime? now}) {
   final today = now ?? DateTime.now();
-  final byDate = [...records]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   NextService? best;
   double bestScore = double.infinity;
-  for (var i = 0; i < byDate.length; i++) {
-    final r = byDate[i];
-    if (r.nextDueKm == null && r.nextDueDate == null) continue;
-    final superseded = byDate
-        .skip(i + 1)
-        .any((later) => later.typeIds.any(r.typeIds.contains));
-    if (superseded) continue;
+  for (final r in openSchedules(records)) {
     final kmLeft = r.nextDueKm != null && currentOdometer != null
         ? r.nextDueKm! - currentOdometer
         : null;
