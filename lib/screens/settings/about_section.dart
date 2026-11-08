@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
 import '../../services/update_installer.dart';
 import '../../services/update_prefs.dart';
 import '../../services/update_service.dart';
-import '../../utils/constants.dart';
 import '../../widgets/update_sheet.dart';
 import 'settings_widgets.dart';
 
@@ -90,7 +90,7 @@ class _AboutSectionState extends State<AboutSection> {
         const SizedBox(height: 4),
         Text(
           _version == null ? 'FuelPulse' : 'FuelPulse ${versionLabel(_version!)}',
-          style: const TextStyle(color: kTextMuted, fontSize: 12),
+          style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 12),
         actionCard(
@@ -102,12 +102,12 @@ class _AboutSectionState extends State<AboutSection> {
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Check for updates on launch',
-              style: TextStyle(color: kTextPrimary, fontSize: 14)),
-          subtitle: const Text(
+          title: Text('Check for updates on launch',
+              style: TextStyle(color: AppColors.of(context).textPrimary, fontSize: 14)),
+          subtitle: Text(
               'Once a day, FuelPulse asks GitHub for a newer release. Nothing '
               'downloads until you choose to.',
-              style: TextStyle(color: kTextMuted, fontSize: 12)),
+              style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12)),
           value: _onLaunch,
           onChanged: _setOnLaunch,
         ),

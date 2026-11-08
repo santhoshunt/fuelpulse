@@ -4,7 +4,8 @@
 //
 //   flutter test tool/readme_screenshots_test.dart --update-goldens
 //
-// Output: screenshots/home.png, add_fill_up.png, stats.png, stats_trends.png.
+// Output: screenshots/dashboard.png, dashboard_dark.png, fuel.png,
+// refill.png, add_fill_up.png, analytics.png, appearance.png.
 
 import 'dart:io';
 
@@ -18,9 +19,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
-import 'package:fuelpulse/screens/entry_form_screen.dart';
-import 'package:fuelpulse/screens/fuel_list_screen.dart';
-import 'package:fuelpulse/screens/analytics_screen.dart';
+import 'package:fuelpulse/screens/app_shell.dart';
 import 'package:fuelpulse/theme/app_theme.dart';
 import 'package:fuelpulse/theme/palettes.dart';
 
@@ -100,6 +99,7 @@ Future<void> _loadFont(String family, List<String> paths) async {
 
 void main() {
   late ThemeData theme;
+  late ThemeData light;
 
   setUpAll(() async {
     final fonts = join(Platform.environment['FLUTTER_ROOT']!, 'bin', 'cache',
@@ -120,6 +120,14 @@ void main() {
           fontFamily: 'Roboto', fontFamilyFallback: ['Segoe UI Emoji']),
     );
 
+    final lb = buildAppTheme(paletteById(kDefaultPaletteId), Brightness.light);
+    light = lb.copyWith(
+      textTheme: lb.textTheme.apply(
+          fontFamily: 'Roboto', fontFamilyFallback: ['Segoe UI Emoji']),
+      primaryTextTheme: lb.primaryTextTheme.apply(
+          fontFamily: 'Roboto', fontFamilyFallback: ['Segoe UI Emoji']),
+    );
+
     // The analyzer only treats test/ as test code; this file is a test too.
     // ignore: invalid_use_of_visible_for_testing_member
     SharedPreferences.setMockInitialValues({});
@@ -136,12 +144,15 @@ void main() {
     await db.insertLogs(_seed);
   });
 
-  Future<void> capture(
-    WidgetTester tester,
-    Widget screen,
-    String name, {
-    Future<void> Function()? before,
-  }) async {
+  Future<void> settle(WidgetTester tester) async {
+    await tester
+        .runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
+    await tester.pumpAndSettle();
+  }
+
+  /// The app on [tab], optionally after tapping [tap], saved as [name].
+  Future<void> capture(WidgetTester tester, String name,
+      {int tab = 0, Finder? tap, bool dark = false}) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.625;
     addTearDown(tester.view.reset);
@@ -149,13 +160,20 @@ void main() {
     try {
       await tester.pumpWidget(MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: theme,
-        home: screen,
+        theme: dark ? theme : light,
+        home: const AppShell(),
       ));
-      await tester
-          .runAsync(() => Future.delayed(const Duration(milliseconds: 300)));
-      await tester.pumpAndSettle();
-      if (before != null) await before();
+      await settle(tester);
+      if (tab > 0) {
+        await tester.tap(find.byType(NavigationDestination).at(tab));
+        await settle(tester);
+      }
+      if (tap != null) {
+        await tester.ensureVisible(tap.first);
+        await tester.pumpAndSettle();
+        await tester.tap(tap.first);
+        await settle(tester);
+      }
       await expectLater(
         find.byType(MaterialApp),
         matchesGoldenFile('../screenshots/$name.png'),
@@ -165,42 +183,14 @@ void main() {
     }
   }
 
-  testWidgets('home', (tester) async {
-    await capture(
-      tester,
-      FuelListScreen(reload: ValueNotifier(0)),
-      'home',
-    );
-  });
-
-  testWidgets('vehicle picker', (tester) async {
-    await capture(
-      tester,
-      FuelListScreen(reload: ValueNotifier(0)),
-      'vehicles',
-      before: () async {
-        await tester.tap(find.text('Swift'));
-        await tester.runAsync(
-            () => Future.delayed(const Duration(milliseconds: 100)));
-        await tester.pumpAndSettle();
-      },
-    );
-  });
-
-  testWidgets('add fill-up', (tester) async {
-    await capture(tester, const EntryFormScreen(vehicleId: kDefaultVehicleId),
-        'add_fill_up');
-  });
-
-  testWidgets('stats', (tester) async {
-    await capture(tester, AnalyticsScreen(reload: ValueNotifier(0)), 'stats');
-  });
-
-  testWidgets('stats trends', (tester) async {
-    await capture(tester, AnalyticsScreen(reload: ValueNotifier(0)), 'stats_trends',
-        before: () async {
-      await tester.ensureVisible(find.text('FUEL MILEAGE (KM/L)'));
-      await tester.pumpAndSettle();
-    });
-  });
+  testWidgets('dashboard', (t) => capture(t, 'dashboard'));
+  testWidgets('dashboard dark', (t) => capture(t, 'dashboard_dark', dark: true));
+  testWidgets('fuel', (t) => capture(t, 'fuel', tab: 1));
+  testWidgets('refill', (t) => capture(t, 'refill',
+      tab: 1, tap: find.text('24 Sep · 16,000 km · 30.50 L')));
+  testWidgets('add fill-up', (t) => capture(t, 'add_fill_up',
+      tab: 1, tap: find.byTooltip('Add refill')));
+  testWidgets('analytics', (t) => capture(t, 'analytics', tab: 2));
+  testWidgets('appearance', (t) => capture(t, 'appearance',
+      tab: 3, tap: find.text('Colour palette'), dark: true));
 }

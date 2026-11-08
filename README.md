@@ -18,35 +18,39 @@ FuelPulse records every fuel fill-up and works out **real-world mileage** for ea
 
 | Feature | Description |
 |---|---|
-| **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, statistics, trend charts and tank size; switch with the chip under the title |
+| **Dashboard** | A speedometer-style gauge with the needle on your average km/L, the odometer on a seven-segment display, fuel left after the last refill with the range it gives, worst, last and best km/L, spend tiles and the last 12 segments' mileage |
+| **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, analytics and tank size; switch by tapping the vehicle name on the Dashboard or Fuel tab |
 | **In-app updates** | Checks GitHub once a day and offers new versions. It downloads the APK for your phone's processor and installs it only if it is FuelPulse, signed with the same key and newer |
 | **Segment-based efficiency** | Calculates km/L between consecutive full-tank entries — shows the exact *"X km ÷ Y L"* breakdown |
-| **Brand comparison** | Ranks fuel brands by average efficiency with visual bars and delta indicators |
-| **Fuel types** | Tag each fill-up with a fuel type. Normal is built in, and you can add others such as XP-95. Statistics compares km/L and ₹/km per type |
-| **Photo scan** | Fill a fill-up from photos: the odometer (TOTAL reading, or TRIP as km travelled) and the pump display (amount, litres and rate, kept only when litres × rate matches the amount). Text is read on the phone and nothing is uploaded. A Report button shares what was read, with the photo, when a scan goes wrong |
-| **Cost tracking** | Enter the price per litre or the total paid and the app fills in the other. Statistics shows total spend, average price, cost per km and monthly spend |
-| **Trend charts** | km/L and cost per km for each full-tank segment, plotted over time |
+| **Fuel list and refill detail** | Fill-ups grouped by month with the brand logo, grade and km/L coloured from Poor to Great. Tap one to see distance, cost per km and the tank after it; swipe to delete |
+| **Analytics** | Monthly fuel spend, mileage over time, brand and fuel grade comparisons and totals. Each chart has its own period: 1, 3, 6 or 12 months |
+| **Brand comparison** | Ranks fuel brands by average efficiency, with each brand's logo |
+| **Fuel types** | Tag each fill-up with a fuel type. Normal is built in, and you can add others such as XP-95. Analytics compares km/L per type |
+| **Photo scan** | Fill a fill-up from photos on the Scan photos screen: the odometer (TOTAL reading, or TRIP as km travelled) and the pump display (amount, litres and rate, kept only when litres × rate matches the amount; when they disagree, the form offers amount ÷ rate as the litres). Gallery photos also set the date. Text is read on the phone and nothing is uploaded. A Report button shares what was read, with the photo, when a scan goes wrong |
+| **Cost tracking** | Enter the price per litre or the total paid and the app fills in the other. The Dashboard shows cost per km, this month's and the average monthly spend, and the latest price |
+| **Date and time** | Each fill-up has an editable date and time, so a fill-up logged later lands in the right place |
 | **Pump brand management** | Add, rename and remove pump brands. A rename updates every past fill-up |
 | **Tank level estimation** | Forward-walk model estimates remaining litres at each fill-up |
 | **Full / Partial fill tracking** | Handles both full-tank and partial-fill entries correctly |
 | **CSV import / export** | Export or import the current vehicle's fill-ups as CSV |
 | **Backup file** | Export one compressed file with every vehicle, its fill-ups, fuel types, pump brands and settings, and restore it on any phone |
 | **Google Drive backup** | Optional daily, weekly or monthly upload of the same backup file. The app can only see files it created in your Drive |
-| **Custom brand colours** | Assign a colour to each fuel brand for quick visual identification |
-| **Dark glossy UI** | Performant CustomPaint-based glossy card design — no BackdropFilter overhead |
+| **Brand logos** | Shell, HP, Indian Oil, Bharat Petroleum, Nayara Energy and Jio-BP show their own logos; other brands show initials |
+| **Light and dark themes** | Light, dark or follow the phone, with 15 colour palettes. Each palette pairs a primary colour with a partner colour for spend bars and the tank level |
 | **Smooth transitions** | Fade + slide page routes, scroll-aware staggered list animations |
 | **Offline-first** | SQLite local database — works without internet |
 
 ## Screenshots
 
-| Home | Add fill-up |
+| Dashboard | Dashboard, dark |
 |---|---|
-| ![Home screen with fill-up history](screenshots/home.png) | ![Add fill-up form](screenshots/add_fill_up.png) |
-| **Statistics** | **Trends** |
-| ![Statistics screen with brand ranking](screenshots/stats.png) | ![Efficiency and cost per km trend charts](screenshots/stats_trends.png) |
-| **Vehicles** | |
-| ![Vehicle picker with a car and a bike](screenshots/vehicles.png) | |
-
+| ![Dashboard with the mileage gauge and spend tiles](screenshots/dashboard.png) | ![Dashboard in dark mode](screenshots/dashboard_dark.png) |
+| **Fuel** | **Refill** |
+| ![Fill-ups grouped by month](screenshots/fuel.png) | ![One refill in detail](screenshots/refill.png) |
+| **Add fill-up** | **Analytics** |
+| ![Add fill-up form](screenshots/add_fill_up.png) | ![Monthly spend and mileage charts](screenshots/analytics.png) |
+| **Appearance** | |
+| ![Theme mode and the 15 colour palettes](screenshots/appearance.png) | |
 The screenshots come from sample data rendered offscreen. To regenerate them, run:
 
 ```bash
@@ -64,25 +68,34 @@ flutter test tool/readme_screenshots_test.dart --update-goldens
 - **Photo scan:** [google_mlkit_text_recognition](https://pub.dev/packages/google_mlkit_text_recognition) for on-device text recognition, [image_picker](https://pub.dev/packages/image_picker) for the camera and gallery
 - **Charts:** drawn with `CustomPaint`, no chart package
 - **Updates:** [http](https://pub.dev/packages/http) for the GitHub release check and download, a Kotlin `PackageInstaller` bridge for the install, [url_launcher](https://pub.dev/packages/url_launcher) for the release page
-- **Theming:** Custom `ThemeManager` with dynamic brand colours via [flutter_colorpicker](https://pub.dev/packages/flutter_colorpicker)
+- **Theming:** a `ThemeExtension` (`AppColors`) built from the chosen palette and light or dark mode, so screens never hard-code a colour
 
 ## Project Structure
 
 ```
 lib/
-├── main.dart                  # App entry, theme setup, DB init
+├── main.dart                  # App entry, appearance load, DB init
 ├── db/
 │   └── database_helper.dart   # SQLite CRUD operations
 ├── models/
 │   ├── fuel_log.dart          # FuelLog data model
-│   ├── vehicle.dart           # Vehicle data model
-│   └── theme_preference.dart  # Theme/colour preferences model
+│   └── vehicle.dart           # Vehicle data model
+├── theme/
+│   ├── palettes.dart          # The 15 colour palettes
+│   ├── app_colors.dart        # Colours for the chosen palette and mode
+│   └── app_theme.dart         # ThemeData for light and dark
 ├── screens/
-│   ├── home_screen.dart       # Main log list + summary banner
+│   ├── app_shell.dart         # Bottom tabs, start-up backup and update check
+│   ├── dashboard_screen.dart  # Gauge card, spend tiles, mileage chart
+│   ├── fuel_list_screen.dart  # Fill-ups by month
+│   ├── refill_detail_screen.dart # One fill-up in full
 │   ├── entry_form_screen.dart # Add or edit a fill-up
-│   ├── stats_screen.dart      # Stat cards, trends, cost, rankings
+│   ├── scan_photos_screen.dart # Odometer and pump photo slots
+│   ├── analytics_screen.dart  # Spend, mileage, brand and grade comparisons
 │   ├── settings_screen.dart   # Settings, one section per file below
-│   └── settings/              # Vehicles, lists, data, Drive, theme, about, danger zone
+│   ├── appearance_screen.dart # Theme mode and palette
+│   ├── import_export_screen.dart # CSV, backup file and Drive backup
+│   └── settings/              # Vehicles, lists, data, Drive, about, danger zone
 ├── services/
 │   ├── backup_payload.dart    # Build and restore the backup contents
 │   ├── backup_codec.dart      # Gzip encode/decode of the backup
@@ -98,25 +111,25 @@ lib/
 │   ├── trend_calculator.dart       # One km/L and ₹/km point per segment
 │   ├── cost_calculator.dart        # Price/total sync and spend stats
 │   ├── tank_level_calculator.dart  # Estimated fuel-in-tank model
+│   ├── mileage_bands.dart          # Poor to Great km/L bands and colours
+│   ├── period_filter.dart          # Logs for the last N months
+│   ├── appearance_prefs.dart       # Saved palette and theme mode
 │   ├── fuel_type_manager.dart      # Fuel type list (add, rename, delete)
 │   ├── pump_brand_manager.dart     # Pump brand list (add, rename, delete)
 │   ├── vehicle_manager.dart        # Active vehicle
 │   ├── csv_helper.dart             # CSV import/export
 │   ├── page_routes.dart            # Smooth fade+slide transitions
-│   ├── theme_manager.dart          # Dynamic theme/colour manager
-│   └── constants.dart              # App-wide constants
+│   └── constants.dart              # Brands, defaults and keys
 └── widgets/
-    ├── glossy_card.dart        # CustomPaint glossy card container
-    ├── fuel_log_tile.dart      # Individual log entry tile
-    ├── stat_card.dart          # Summary statistic card
-    ├── rank_tile.dart          # Brand / fuel type ranking row
+    ├── gauge_card.dart         # Dashboard gauge with needle and tank
+    ├── lcd_odometer.dart       # Seven-segment odometer
     ├── trend_chart.dart        # CustomPaint line chart
-    ├── brand_badge.dart        # Colour-coded brand chip
-    ├── fuel_gauge.dart         # Fuel gauge visual
-    ├── color_swatch_picker.dart # Brand colour picker
+    ├── month_bar_chart.dart    # Monthly spend bars
+    ├── period_selector.dart    # 1M / 3M / 6M / 12M buttons
+    ├── brand_logo.dart         # Bundled brand logo, initials otherwise
+    ├── brand_badge.dart        # Initials badge for other brands
     ├── option_picker.dart      # Bottom-sheet picker for type and brand
     ├── add_fuel_type_dialog.dart # Name dialog for a new type or brand
-    ├── vehicle_chip.dart       # Home screen vehicle switcher
     ├── vehicle_picker.dart     # Vehicle picker sheet and edit dialog
     ├── update_banner.dart      # Update available card
     ├── update_sheet.dart       # Version picker, download and install

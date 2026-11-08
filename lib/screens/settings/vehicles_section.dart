@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
 import '../../db/database_helper.dart';
 import '../../models/vehicle.dart';
-import '../../utils/constants.dart';
 import '../../widgets/vehicle_picker.dart';
 import 'settings_widgets.dart';
 
@@ -62,7 +62,7 @@ class _VehiclesSectionState extends State<VehiclesSection> {
           ElevatedButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: ElevatedButton.styleFrom(
-                  backgroundColor: kDanger, foregroundColor: Colors.white),
+                  backgroundColor: AppColors.of(context).danger, foregroundColor: Colors.white),
               child: const Text('Delete')),
         ],
       ),
@@ -91,30 +91,30 @@ class _VehiclesSectionState extends State<VehiclesSection> {
       children: [
         sectionHeader('Vehicles'),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Each vehicle has its own fill-ups, stats and tank size. Switch '
-          'between them from the chip on the home screen.',
-          style: TextStyle(color: kTextMuted, fontSize: 12),
+          'between them from the vehicle name on the Dashboard or Fuel tab.',
+          style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.04),
+            color: AppColors.of(context).card,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: AppColors.of(context).cardBorder),
           ),
           child: Column(
             children: [
               for (var i = 0; i < _vehicles.length; i++) ...[
                 if (i > 0)
                   Divider(
-                      height: 1, color: Colors.white.withValues(alpha: 0.06)),
+                      height: 1, color: AppColors.of(context).cardBorder),
                 Padding(
                   padding: const EdgeInsets.only(left: 16),
                   child: Row(
                     children: [
                       Icon(vehicleIcon(_vehicles[i].type),
-                          color: kTextSecondary, size: 22),
+                          color: AppColors.of(context).textSecondary, size: 22),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -122,14 +122,14 @@ class _VehiclesSectionState extends State<VehiclesSection> {
                           children: [
                             Text(
                               _vehicles[i].name,
-                              style: const TextStyle(
-                                  color: kTextPrimary, fontSize: 14),
+                              style: TextStyle(
+                                  color: AppColors.of(context).textPrimary, fontSize: 14),
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               _subtitle(_vehicles[i]),
-                              style: const TextStyle(
-                                  color: kTextMuted, fontSize: 12),
+                              style: TextStyle(
+                                  color: AppColors.of(context).textSecondary, fontSize: 12),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
@@ -150,8 +150,8 @@ class _VehiclesSectionState extends State<VehiclesSection> {
                         icon: Icon(Icons.delete_outline,
                             size: 18,
                             color: canDelete
-                                ? kDanger.withValues(alpha: 0.7)
-                                : kTextMuted.withValues(alpha: 0.4)),
+                                ? AppColors.of(context).danger.withValues(alpha: 0.7)
+                                : AppColors.of(context).textSecondary.withValues(alpha: 0.4)),
                         onPressed:
                             canDelete ? () => _delete(_vehicles[i]) : null,
                         visualDensity: VisualDensity.compact,
@@ -160,7 +160,7 @@ class _VehiclesSectionState extends State<VehiclesSection> {
                   ),
                 ),
               ],
-              Divider(height: 1, color: Colors.white.withValues(alpha: 0.06)),
+              Divider(height: 1, color: AppColors.of(context).cardBorder),
               TextButton.icon(
                 onPressed: _add,
                 icon: const Icon(Icons.add, size: 18),

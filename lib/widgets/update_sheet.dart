@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,7 +9,6 @@ import '../services/update_downloader.dart';
 import '../services/update_installer.dart';
 import '../services/update_prefs.dart';
 import '../services/update_service.dart';
-import '../utils/constants.dart';
 
 // Ported from the expense tracker's update sheet. Its provider, toast and
 // link widgets become SharedPreferences, a SnackBar and url_launcher.
@@ -47,7 +47,7 @@ Future<void> showUpdateSheet(
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      backgroundColor: const Color(0xFF161616),
+      backgroundColor: AppColors.of(context).card,
       builder: (_) => UpdateSheet(
         updates: updates,
         installer: installer ?? ChannelUpdateInstaller.instance,
@@ -218,7 +218,7 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final muted = theme.textTheme.bodySmall?.copyWith(color: kTextSecondary);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: AppColors.of(context).textSecondary);
     final busy = _step == _Step.downloading || _step == _Step.installing;
     final newer = widget.updates.newer;
     return SingleChildScrollView(
@@ -235,7 +235,7 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
                       ? 'Update to ${versionLabel(newer.first.tag)}'
                       : 'Choose a version',
                   style: theme.textTheme.titleLarge
-                      ?.copyWith(color: kTextPrimary),
+                      ?.copyWith(color: AppColors.of(context).textPrimary),
                 ),
               ),
               Text(
@@ -263,7 +263,7 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
           ),
           const Divider(height: 24),
           Text('Downloads from',
-              style: theme.textTheme.titleSmall?.copyWith(color: kTextPrimary)),
+              style: theme.textTheme.titleSmall?.copyWith(color: AppColors.of(context).textPrimary)),
           const SizedBox(height: 4),
           SelectableText(_picked.downloadUrl, style: muted),
           const SizedBox(height: 2),
@@ -290,7 +290,7 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           Text(
             'Before installing, the app checks',
-            style: theme.textTheme.titleSmall?.copyWith(color: kTextPrimary),
+            style: theme.textTheme.titleSmall?.copyWith(color: AppColors.of(context).textPrimary),
           ),
           const SizedBox(height: 4),
           for (final check in const [
@@ -302,8 +302,8 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
                 children: [
-                  const Icon(Icons.verified_user_outlined,
-                      size: 16, color: kTextSecondary),
+                  Icon(Icons.verified_user_outlined,
+                      size: 16, color: AppColors.of(context).textSecondary),
                   const SizedBox(width: 8),
                   Expanded(child: Text(check, style: muted)),
                 ],
@@ -328,13 +328,13 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
         : IconButton(
             tooltip: open ? 'Hide notes' : 'Show notes',
             icon: Icon(open ? Icons.expand_less : Icons.expand_more,
-                color: kTextSecondary),
+                color: AppColors.of(context).textSecondary),
             onPressed: () => setState(
               () => open ? _notesOpen.remove(o.tag) : _notesOpen.add(o.tag),
             ),
           );
     final title = Text(versionLabel(o.tag),
-        style: const TextStyle(color: kTextPrimary));
+        style: TextStyle(color: AppColors.of(context).textPrimary));
     final subtitle = Text([?date, '${_mb(o.sizeBytes)} MB'].join(' · '),
         style: muted);
     return Column(
@@ -396,7 +396,7 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
             'Android needs your OK first. Turn on "Allow from this source" '
             'for FuelPulse, then come back here. You can turn it off again '
             'after updating.',
-            style: theme.textTheme.bodyMedium?.copyWith(color: kTextPrimary),
+            style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.of(context).textPrimary),
           ),
           const SizedBox(height: 12),
           OverflowBar(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import '../db/database_helper.dart';
 import '../models/vehicle.dart';
-import '../utils/constants.dart';
 import 'option_picker.dart';
 
 IconData vehicleIcon(VehicleType type) => switch (type) {
@@ -32,7 +32,7 @@ Future<Vehicle?> showVehiclePicker(
         PickerOption(
           value: v.id,
           label: v.name,
-          leading: Icon(vehicleIcon(v.type), color: kTextSecondary, size: 22),
+          leading: Icon(vehicleIcon(v.type), color: AppColors.of(context).textSecondary, size: 22),
         ),
     ],
     selected: selectedId,

@@ -1,7 +1,7 @@
 name: fuelpulse
 description: "FuelPulse — Offline fuel fill-up tracker with km/L efficiency and brand comparison."
 publish_to: 'none'
-version: 2.1.4+10
+version: 2.2.0+11
 
 environment:
   sdk: ^3.11.0
@@ -17,7 +17,6 @@ dependencies:
   csv: ^6.0.0
   share_plus: ^12.0.2
   file_picker: ^10.1.0
-  flutter_colorpicker: ^1.1.0
   path_provider: ^2.1.0
   # Google Drive backup. Pinned to the 6.x google_sign_in API surface
   # (constructor + signIn/signInSilently + authenticatedClient extension) —

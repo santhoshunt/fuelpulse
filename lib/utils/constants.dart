@@ -105,10 +105,3 @@ BrandConfig getBrandConfig(String brandName) {
 final List<String> kDefaultPumpBrands =
     List.unmodifiable(kBrands.map((b) => b.name));
 
-// ── App-wide colors ──────────────────────────────────────────────────
-const Color kBgBase = Color(0xFF080808);
-const Color kBgSurface = Color(0x0AFFFFFF); // ~4% white
-const Color kTextPrimary = Color(0xFFE8EDF5);
-const Color kTextSecondary = Color(0xFF8B95A8);
-const Color kTextMuted = Color(0xFF4B5563);
-const Color kDanger = Color(0xFFEF4444);

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../db/database_helper.dart';
 import '../../services/backup_payload.dart';
 import '../../services/drive_backup_service.dart';
-import '../../utils/constants.dart';
 import 'restore_mode_dialog.dart';
 
 // ── Google Drive backup section ─────────────────────────────────────────
@@ -154,13 +154,13 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             "Backs up every vehicle and its fill-ups (including costs), fuel "
             "types, pump brands and settings to a "
             "'${DriveBackupService.folderName}' folder in your Google Drive "
             'on the chosen schedule. Off until connected — nothing is '
             'uploaded.',
-            style: TextStyle(color: kTextMuted, fontSize: 12),
+            style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 12),
           _card(
@@ -182,22 +182,22 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.08),
+              color: AppColors.of(context).warning.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
+                  color: AppColors.of(context).warning.withValues(alpha: 0.3)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.cloud_off_outlined,
-                    color: Color(0xFFF59E0B), size: 18),
+                Icon(Icons.cloud_off_outlined,
+                    color: AppColors.of(context).warning, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'The last Drive backup failed: $_lastError',
-                    style: const TextStyle(
-                        color: Color(0xFFF59E0B), fontSize: 12),
+                    style: TextStyle(
+                        color: AppColors.of(context).warning, fontSize: 12),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -212,9 +212,9 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.04),
+            color: AppColors.of(context).card,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(color: AppColors.of(context).cardBorder),
           ),
           child: Row(
             children: [
@@ -226,16 +226,16 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
                   children: [
                     Text(
                       _account!.email,
-                      style: const TextStyle(
-                          color: kTextPrimary, fontSize: 13),
+                      style: TextStyle(
+                          color: AppColors.of(context).textPrimary, fontSize: 13),
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Last backup: '
                       '${DriveBackupService.formatLastBackup(_lastBackup)}',
-                      style: const TextStyle(
-                          color: kTextMuted, fontSize: 11),
+                      style: TextStyle(
+                          color: AppColors.of(context).textSecondary, fontSize: 11),
                     ),
                   ],
                 ),
@@ -253,8 +253,8 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
         // Frequency
         Row(
           children: [
-            const Text('Frequency',
-                style: TextStyle(color: kTextSecondary, fontSize: 13)),
+            Text('Frequency',
+                style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13)),
             const Spacer(),
             for (final f in ['daily', 'weekly', 'monthly']) ...[
               Padding(
@@ -313,9 +313,9 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 18),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.04),
+          color: AppColors.of(context).card,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(color: AppColors.of(context).cardBorder),
         ),
         child: Column(
           children: [
@@ -330,7 +330,7 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
             const SizedBox(height: 8),
             Text(
               label,
-              style: const TextStyle(color: kTextSecondary, fontSize: 13),
+              style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13),
             ),
           ],
         ),

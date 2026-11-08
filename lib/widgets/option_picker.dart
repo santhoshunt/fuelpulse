@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../utils/constants.dart';
+import '../theme/app_colors.dart';
 
 /// One row in the picker sheet.
 class PickerOption<T> {
@@ -39,7 +39,7 @@ Future<PickerResult<T>?> showOptionPicker<T>({
 
   return showModalBottomSheet<PickerResult<T>>(
     context: context,
-    backgroundColor: const Color(0xFF161616),
+    backgroundColor: AppColors.of(context).card,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -59,7 +59,7 @@ Future<PickerResult<T>?> showOptionPicker<T>({
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.25),
+                    color: AppColors.of(context).cardBorder,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -68,8 +68,8 @@ Future<PickerResult<T>?> showOptionPicker<T>({
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    color: kTextPrimary,
+                  style: TextStyle(
+                    color: AppColors.of(context).textPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
@@ -112,7 +112,7 @@ Future<PickerResult<T>?> showOptionPicker<T>({
                                 child: Text(
                                   option.label,
                                   style: TextStyle(
-                                    color: isSelected ? accent : kTextPrimary,
+                                    color: isSelected ? accent : AppColors.of(context).textPrimary,
                                     fontSize: 15,
                                     fontWeight: isSelected
                                         ? FontWeight.w600
@@ -134,7 +134,7 @@ Future<PickerResult<T>?> showOptionPicker<T>({
               ),
               if (actionLabel != null) ...[
                 Divider(
-                    height: 1, color: Colors.white.withValues(alpha: 0.08)),
+                    height: 1, color: AppColors.of(context).cardBorder),
                 InkWell(
                   onTap: () =>
                       Navigator.pop(ctx, PickerActionTapped<T>()),
@@ -192,8 +192,8 @@ class PickerField extends StatelessWidget {
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon),
-          suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded,
-              color: kTextSecondary),
+          suffixIcon: Icon(Icons.keyboard_arrow_down_rounded,
+              color: AppColors.of(context).textSecondary),
         ),
         child: child,
       ),

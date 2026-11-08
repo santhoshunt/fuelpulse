@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
 import '../../db/database_helper.dart';
 import '../../utils/vehicle_manager.dart';
 import '../../services/backup_file.dart';
 import '../../services/backup_payload.dart';
-import '../../utils/constants.dart';
 import '../../utils/csv_helper.dart';
 import 'restore_mode_dialog.dart';
 import 'settings_widgets.dart';
@@ -149,11 +149,11 @@ class DataSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Backup files (.json.gz) carry everything: every vehicle with its '
           'entries and costs, fuel types, pump brands and settings. CSV '
           'carries the current vehicle\'s entries only.',
-          style: TextStyle(color: kTextMuted, fontSize: 12),
+          style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
       ],
     );

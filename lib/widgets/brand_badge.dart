@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import '../utils/constants.dart';
 
 /// Colored rounded square badge with brand abbreviation + optional name label.
@@ -45,7 +46,7 @@ class BrandBadge extends StatelessWidget {
             child: Text(
               brandName.isEmpty ? 'Unknown' : brandName,
               style: TextStyle(
-                color: kTextPrimary,
+                color: AppColors.of(context).textPrimary,
                 fontSize: 13,
               ),
               overflow: TextOverflow.ellipsis,

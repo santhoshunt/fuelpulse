@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../utils/constants.dart';
+import '../theme/app_colors.dart';
 
 /// Segmented toggle switch between Odometer and KM Travelled modes.
 class ModeSwitch extends StatelessWidget {
@@ -16,54 +16,35 @@ class ModeSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-
+    final colors = AppColors.of(context);
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.07),
-            Colors.white.withValues(alpha: 0.03),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: Color.alphaBlend(
+            colors.textPrimary.withValues(alpha: 0.07), colors.page),
+        borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       child: Row(
         children: [
-          _tab(
-            label: 'Odometer',
-            selected: !isKmMode,
-            accent: accent,
-            onTap: () => onChanged(false),
-            enabled: true,
-          ),
-          _tab(
-            label: 'KM Travelled',
-            selected: isKmMode,
-            accent: accent,
-            onTap: () => onChanged(true),
-            enabled: kmModeEnabled,
-          ),
+          _tab(colors,
+              label: 'Odometer',
+              selected: !isKmMode,
+              onTap: () => onChanged(false),
+              enabled: true),
+          _tab(colors,
+              label: 'KM Travelled',
+              selected: isKmMode,
+              onTap: () => onChanged(true),
+              enabled: kmModeEnabled),
         ],
       ),
     );
   }
 
-  Widget _tab({
+  Widget _tab(
+    AppColors colors, {
     required String label,
     required bool selected,
-    required Color accent,
     required VoidCallback onTap,
     required bool enabled,
   }) {
@@ -71,23 +52,22 @@ class ModeSwitch extends StatelessWidget {
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          duration: const Duration(milliseconds: 200),
+          height: 38,
           decoration: BoxDecoration(
-            color: selected ? accent.withValues(alpha: 0.15) : Colors.transparent,
+            color: selected ? colors.card : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           alignment: Alignment.center,
           child: Text(
             label,
             style: TextStyle(
-              color: !enabled && !selected
-                  ? kTextMuted
-                  : selected
-                      ? accent
-                      : kTextSecondary,
+              color: selected
+                  ? colors.textPrimary
+                  : colors.textSecondary
+                      .withValues(alpha: enabled ? 1 : 0.5),
               fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-              fontSize: 13,
+              fontSize: 14,
             ),
           ),
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
 import '../../utils/constants.dart';
 import '../../utils/fuel_type_manager.dart' as ftm;
 import '../../utils/pump_brand_manager.dart' as pbm;
@@ -123,10 +124,10 @@ class _ListsSectionState extends State<ListsSection> {
         // ── Fuel Types ───────────────────────────────
         sectionHeader('Fuel Types'),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Offered in the fill-up form. Renaming updates existing '
           'entries; deleting only removes it from the list.',
-          style: TextStyle(color: kTextMuted, fontSize: 12),
+          style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 12),
         editableListCard(
@@ -142,10 +143,10 @@ class _ListsSectionState extends State<ListsSection> {
         // ── Pump Brands ──────────────────────────────
         sectionHeader('Pump Brands'),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Offered in the fill-up form. Renaming updates existing '
           'entries; deleting only removes it from the list.',
-          style: TextStyle(color: kTextMuted, fontSize: 12),
+          style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 12),
         editableListCard(
