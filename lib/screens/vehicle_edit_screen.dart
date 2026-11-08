@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
+import '../utils/custom_pictures.dart';
+import '../widgets/vehicle_icon.dart';
 import '../widgets/vehicle_picker.dart' show vehicleIcon, vehicleTypeLabel;
 import 'settings/settings_widgets.dart';
 
@@ -32,6 +34,9 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
   late final _cap = TextEditingController(
       text: widget.initial?.tankCapacity?.toString() ?? '');
   late VehicleType _type = widget.initial?.type ?? VehicleType.car;
+
+  /// A picture name, `file:NAME` for your own, or null for the default.
+  late String? _icon = widget.initial?.icon;
 
   String? _nameError;
   String? _capError;
@@ -65,6 +70,7 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
               name: name,
               type: _type,
               model: _model.text.trim(),
+              icon: _icon,
               tankCapacity: tank,
               sortOrder: widget.nextSortOrder,
               createdAt: DateTime.now().toIso8601String(),
@@ -73,6 +79,8 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
               name: name,
               type: _type,
               model: _model.text.trim(),
+              icon: _icon,
+              clearIcon: _icon == null,
               tankCapacity: tank,
               clearTankCapacity: tank == null,
             ),
@@ -123,8 +131,45 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
                   avatar: Icon(vehicleIcon(t), size: 18),
                   label: Text(vehicleTypeLabel(t)),
                   selected: _type == t,
-                  onSelected: (_) => setState(() => _type = t),
+                  onSelected: (_) => setState(() {
+                    _type = t;
+                    // A picture of another type no longer fits.
+                    if (_icon != null &&
+                        !_icon!.startsWith('file:') &&
+                        !picturesFor(t).contains(_icon)) {
+                      _icon = null;
+                    }
+                  }),
                 ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          sectionHeader('Picture'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final p in picturesFor(_type))
+                ChoiceChip(
+                  avatar: VehicleIcon(type: _type, icon: p, size: 22),
+                  label: Text(kVehiclePictures[p]!),
+                  selected: (_icon ?? picturesFor(_type).first) == p,
+                  onSelected: (_) => setState(() => _icon = p),
+                ),
+              ChoiceChip(
+                avatar: _icon != null && _icon!.startsWith('file:')
+                    ? VehicleIcon(type: _type, icon: _icon, size: 22)
+                    : const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                label: const Text('Your picture'),
+                selected: _icon?.startsWith('file:') ?? false,
+                onSelected: (_) async {
+                  final name = await pickSquarePicture('vehicle');
+                  if (name != null && mounted) {
+                    setState(() => _icon = 'file:$name');
+                  }
+                },
+              ),
             ],
           ),
           const SizedBox(height: 24),

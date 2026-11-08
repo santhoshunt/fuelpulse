@@ -111,6 +111,11 @@ class _AboutSectionState extends State<AboutSection> {
           value: _onLaunch,
           onChanged: _setOnLaunch,
         ),
+        const SizedBox(height: 4),
+        // Required by the CC BY-SA 4.0 licence of the vehicle pictures.
+        Text('Vehicle pictures by OpenMoji (openmoji.org), CC BY-SA 4.0.',
+            style: TextStyle(
+                color: AppColors.of(context).textSecondary, fontSize: 12)),
       ],
     );
   }

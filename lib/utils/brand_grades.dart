@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
 import 'constants.dart';
+import 'custom_pictures.dart';
 
 /// Brands and the fuel grades each sells, as JSON `{brand: [grade, ...]}`,
 /// in display order. Replaces the separate pump brand and fuel type lists
@@ -101,6 +102,7 @@ Future<int> renameBrand(String from, String to) async {
   }
   await saveBrandGrades(
       {for (final e in map.entries) e.key == from ? trimmed : e.key: e.value});
+  await renameBrandLogo(from, trimmed);
   return DatabaseHelper().renamePumpBrand(from, trimmed);
 }
 

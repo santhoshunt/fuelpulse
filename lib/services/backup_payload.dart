@@ -11,6 +11,7 @@ import '../theme/palettes.dart';
 import '../utils/appearance_prefs.dart';
 import '../utils/constants.dart';
 import '../utils/brand_grades.dart';
+import '../utils/custom_pictures.dart';
 import '../utils/vehicle_manager.dart';
 import 'service_reminders.dart';
 
@@ -35,6 +36,12 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   final workshops = await db.getWorkshops();
   final serviceTypes = await db.getServiceTypes();
   final services = await db.getEveryService();
+  final logos = brandLogos.value;
+  final pictures = await picturesForBackup([
+    ...logos.values,
+    for (final v in vehicles)
+      if (v.icon?.startsWith('file:') ?? false) v.icon!.substring(5),
+  ]);
   final prefs = await SharedPreferences.getInstance();
   return {
     'app': kBackupApp,
@@ -50,6 +57,9 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     ],
     // The two flat lists v2.x read; a format 4 file restores from the map.
     'brandGrades': brandGrades,
+    // From v3.2.0: your logos and vehicle pictures, as base64 PNGs.
+    'brandLogos': logos,
+    'pictures': pictures,
     'fuelTypes': allGrades(brandGrades),
     'pumpBrands': brandGrades.keys.toList(),
     'settings': {
@@ -130,6 +140,10 @@ Future<int> restoreBackup(Map<String, dynamic> data,
 
   final db = DatabaseHelper();
   final settings = data['settings'] is Map ? data['settings'] as Map : null;
+  if (data['pictures'] is Map) await restorePictures(data['pictures'] as Map);
+  if (data['brandLogos'] is Map) {
+    await restoreBrandLogos(data['brandLogos'] as Map, merge: !replace);
+  }
 
   if (replace) {
     final vehicles = List.of(fileVehicles ?? const <Vehicle>[]);

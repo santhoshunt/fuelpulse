@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'screens/app_shell.dart';
 import 'theme/app_theme.dart';
 import 'utils/appearance_prefs.dart';
+import 'utils/custom_pictures.dart';
 import 'utils/vehicle_manager.dart';
 
 Future<void> main() async {
@@ -30,6 +31,13 @@ Future<void> main() async {
     await reloadAppearance();
   } catch (e) {
     debugPrint('Appearance load failed: $e');
+  }
+
+  // Your logos and vehicle pictures, before anything draws them.
+  try {
+    await initPictures();
+  } catch (e) {
+    debugPrint('Pictures folder failed: $e');
   }
 
   runApp(const FuelPulseApp());

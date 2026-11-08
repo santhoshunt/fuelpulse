@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../utils/brand_grades.dart';
+import '../utils/custom_pictures.dart';
 import '../utils/page_routes.dart';
 import '../widgets/add_fuel_type_dialog.dart';
 import '../widgets/brand_logo.dart';
@@ -153,6 +154,12 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
     await _load();
   }
 
+  Future<void> _changeLogo() async {
+    final name = await pickSquarePicture('brand');
+    if (name == null) return;
+    await setBrandLogo(_brand, name);
+  }
+
   Future<void> _delete() async {
     final ok = await confirmListDelete(
         context,
@@ -201,14 +208,28 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          settingsGroup([
-            SettingsRow(
-              icon: Icons.edit_outlined,
-              label: 'Rename brand',
-              trailing: BrandLogo(brandName: _brand, size: 28),
-              onTap: _rename,
-            ),
-          ]),
+          ValueListenableBuilder<Map<String, String>>(
+            valueListenable: brandLogos,
+            builder: (context, logos, _) => settingsGroup([
+              SettingsRow(
+                icon: Icons.image_outlined,
+                label: logos.containsKey(_brand) ? 'Change logo' : 'Use your own logo',
+                trailing: BrandLogo(brandName: _brand, size: 28),
+                onTap: _changeLogo,
+              ),
+              if (logos.containsKey(_brand))
+                SettingsRow(
+                  icon: Icons.undo,
+                  label: 'Remove your logo',
+                  onTap: () => setBrandLogo(_brand, null),
+                ),
+              SettingsRow(
+                icon: Icons.edit_outlined,
+                label: 'Rename brand',
+                onTap: _rename,
+              ),
+            ]),
+          ),
           const SizedBox(height: 24),
           sectionHeader('Fuel grades'),
           const SizedBox(height: 12),
