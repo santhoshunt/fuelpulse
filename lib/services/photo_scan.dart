@@ -5,6 +5,7 @@ import 'dart:ui' show Rect;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'app_lock.dart';
 
 /// Reads an odometer photo or a fuel pump display photo on the phone with
 /// ML Kit text recognition, so the fill-up form can pre-fill itself.
@@ -455,8 +456,8 @@ class PhotoScanner {
 /// the gallery. Null when cancelled or unread.
 Future<int?> scanOdometer(int? last,
     {ImageSource source = ImageSource.camera}) async {
-  final x = await ImagePicker()
-      .pickImage(source: source, maxWidth: 2400, imageQuality: 92);
+  final x = await withoutRelock(() => ImagePicker()
+      .pickImage(source: source, maxWidth: 2400, imageQuality: 92));
   if (x == null) return null;
   final scanner = PhotoScanner();
   try {

@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/attachment.dart';
+import 'package:fuelpulse/models/check.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/service_record.dart';
 import 'package:fuelpulse/models/vehicle.dart';
@@ -67,6 +68,14 @@ void main() {
         file: 'bill.png',
         kind: 'image',
         createdAt: '2025-03-01T10:00:00.000'));
+
+    await db.saveCheck(const Check(
+        id: 'q1',
+        vehicleId: kDefaultVehicleId,
+        name: 'Tyre pressure',
+        everyDays: 14,
+        lastDoneAt: '2025-03-01T10:00:00.000',
+        lastDoneKm: 20000));
 
     final bytes = await buildVehicleHistoryPdf(await loadActiveVehicle());
     expect(ascii.decode(bytes.sublist(0, 5)), '%PDF-');

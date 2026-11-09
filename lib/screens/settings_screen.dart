@@ -224,6 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       SmoothPageRoute(
         page: MileageRangesScreen(
           vehicleName: v.name,
+          vehicleId: v.id,
           type: v.type,
           cost: cost,
           limits: cost ? costBandsFor(v).limits : bandsFor(v).limits,

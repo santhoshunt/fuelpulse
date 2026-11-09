@@ -29,6 +29,9 @@ class GaugeCard extends StatelessWidget {
   /// Shown under the dial in place of the numbers when there are no logs.
   final String? emptyMessage;
 
+  /// A fixed From and To from Settings; null fits the scale to the values.
+  final (double, double)? scale;
+
   const GaugeCard({
     super.key,
     required this.averageKmL,
@@ -43,6 +46,7 @@ class GaugeCard extends StatelessWidget {
     this.tankNote,
     this.onUpdateReading,
     this.emptyMessage,
+    this.scale,
   });
 
   /// Scale ends: 25 km/L wide on multiples of 5, centred on [centre] (the
@@ -66,7 +70,7 @@ class GaugeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final values = [averageKmL, worst, best, last].whereType<double>().toList();
-    final (lo, hi) = scaleFor(averageKmL, values);
+    final (lo, hi) = scale ?? scaleFor(averageKmL, values);
     final arc = Color.lerp(colors.primary, Colors.white, 0.55)!;
     const ink = AppColors.gaugeInk;
     const soft = AppColors.gaugeInkSoft;

@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../services/drive_backup_service.dart';
 import '../services/home_widgets.dart';
@@ -54,6 +55,10 @@ class _AppShellState extends State<AppShell>
 
   /// The Garage tab's list: 0 Service, 1 Trips, 2 Papers.
   final _garageSection = ValueNotifier<int>(0);
+
+  /// A fill-up the Fuel tab should scroll to and mark, set by the
+  /// Dashboard's mileage alert. The Fuel tab clears it once shown.
+  final _showFillUp = ValueNotifier<String?>(null);
 
   StreamSubscription<Uri?>? _widgetTaps;
   StreamSubscription<Uri>? _notificationTaps;
@@ -182,7 +187,17 @@ class _AppShellState extends State<AppShell>
   /// the daily check has to run there too.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _checkForUpdate();
+    if (state != AppLifecycleState.resumed) return;
+    _checkForUpdate();
+    unawaited(_reloadSettings());
+  }
+
+  /// A reading typed into a notification is saved by a background isolate,
+  /// which has its own copy of the settings; read them again so this one
+  /// does not miss it, then let the tabs reload.
+  Future<void> _reloadSettings() async {
+    await (await SharedPreferences.getInstance()).reload();
+    _reload.value++;
   }
 
   static bool get _updatesSupported => !kIsWeb && Platform.isAndroid;
@@ -294,8 +309,14 @@ class _AppShellState extends State<AppShell>
                     child: IndexedStack(
                       index: leaving ? _from : _tab,
                       children: [
-                        DashboardScreen(reload: _reload),
-                        FuelListScreen(reload: _reload),
+                        DashboardScreen(
+                          reload: _reload,
+                          onShowFillUp: (id) {
+                            _showFillUp.value = id;
+                            _select(1);
+                          },
+                        ),
+                        FuelListScreen(reload: _reload, show: _showFillUp),
                         GarageScreen(
                             reload: _reload, section: _garageSection),
                         AnalyticsScreen(reload: _reload),

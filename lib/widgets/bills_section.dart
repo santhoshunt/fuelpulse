@@ -8,6 +8,7 @@ import '../screens/bill_viewer_screen.dart';
 import '../theme/app_colors.dart';
 import '../utils/custom_pictures.dart';
 import '../utils/page_routes.dart';
+import '../services/app_lock.dart';
 
 /// Thumbnails of a form's bills with an Add tile. Changes stay in memory:
 /// the form calls [saveBills] when it saves and [discardBills] when it is
@@ -56,14 +57,16 @@ class BillsSection extends StatelessWidget {
     if (choice == null) return;
     String? path;
     if (choice == 'pdf') {
-      final r = await FilePicker.platform
-          .pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
-      path = r?.files.single.path;
+      final picked = await withoutRelock(() => FilePicker.pickFile(
+          type: FileType.custom, allowedExtensions: ['pdf']));
+      path = picked?.path;
     } else {
-      final x = await ImagePicker().pickImage(
+      // The long side at most 1600 px, so a tall receipt stays small too.
+      final x = await withoutRelock(() => ImagePicker().pickImage(
           source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
           maxWidth: 1600,
-          imageQuality: 80);
+          maxHeight: 1600,
+          imageQuality: 80));
       path = x?.path;
     }
     if (path == null) return;

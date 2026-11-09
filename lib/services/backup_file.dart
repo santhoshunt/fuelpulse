@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'backup_codec.dart';
 import 'backup_payload.dart';
+import 'app_lock.dart';
 
 /// Local backup file export/import — the Drive-independent path. Same
 /// payload and gzip wire format as the Drive backup, so a file exported here
@@ -38,8 +39,8 @@ Future<String> exportBackupFile() async {
 /// which would grey out the very file the user is after. Decode validation
 /// rejects wrong picks with a clear message instead.
 Future<Map<String, dynamic>?> pickBackupFile() async {
-  final result = await FilePicker.platform.pickFiles(type: FileType.any);
-  final path = result?.files.single.path;
+  final picked = await withoutRelock(FilePicker.pickFile);
+  final path = picked?.path;
   if (path == null) return null;
   return readBackupFile(File(path));
 }

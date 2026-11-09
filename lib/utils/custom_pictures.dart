@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_lock.dart';
 
 /// Pictures you pick for a brand logo or a vehicle: cropped to a centre
 /// square, scaled to [kPictureSize] px, kept as PNGs in app storage and in
@@ -69,8 +70,8 @@ File pictureFile(String name) => File('$picturesPath/$name');
 /// Opens the gallery and saves the pick as a square PNG. Returns its file
 /// name, or null when cancelled.
 Future<String?> pickSquarePicture(String prefix) async {
-  final pick = await ImagePicker()
-      .pickImage(source: ImageSource.gallery, maxWidth: 1200, maxHeight: 1200);
+  final pick = await withoutRelock(() => ImagePicker()
+      .pickImage(source: ImageSource.gallery, maxWidth: 1200, maxHeight: 1200));
   if (pick == null) return null;
   final codec = await ui.instantiateImageCodec(await pick.readAsBytes());
   final image = (await codec.getNextFrame()).image;

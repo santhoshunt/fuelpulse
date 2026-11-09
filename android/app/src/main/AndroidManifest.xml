@@ -38,6 +38,9 @@
             </intent-filter>
         </activity>
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <!-- Notification buttons that don't open the app, such as the
+             reading reminder's Enter km reply. -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
@@ -47,35 +50,35 @@
             </intent-filter>
         </receiver>
         <!-- Home screen widgets (FuelWidgets.kt). -->
-        <receiver android:name=".MileageWidget" android:exported="false">
+        <receiver android:name=".MileageWidget" android:label="@string/widget_name_mileage" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_mileage_info" />
         </receiver>
-        <receiver android:name=".QuickAddWidget" android:exported="false">
+        <receiver android:name=".QuickAddWidget" android:label="@string/widget_name_quick_add" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_quick_add_info" />
         </receiver>
-        <receiver android:name=".TankWidget" android:exported="false">
+        <receiver android:name=".TankWidget" android:label="@string/widget_name_tank" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_tank_info" />
         </receiver>
-        <receiver android:name=".ServiceWidget" android:exported="false">
+        <receiver android:name=".ServiceWidget" android:label="@string/widget_name_service" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_service_info" />
         </receiver>
-        <receiver android:name=".SpendWidget" android:exported="false">
+        <receiver android:name=".SpendWidget" android:label="@string/widget_name_spend" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_spend_info" />
         </receiver>
-        <receiver android:name=".BestPumpWidget" android:exported="false">
+        <receiver android:name=".BestPumpWidget" android:label="@string/widget_name_best_pump" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_best_pump_info" />
         </receiver>
-        <receiver android:name=".OdometerWidget" android:exported="false">
+        <receiver android:name=".OdometerWidget" android:label="@string/widget_name_odometer" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_odometer_info" />
         </receiver>
-        <receiver android:name=".TripWidget" android:exported="false">
+        <receiver android:name=".TripWidget" android:label="@string/widget_name_trip" android:exported="false">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_trip_info" />
         </receiver>

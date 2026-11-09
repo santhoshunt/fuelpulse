@@ -35,18 +35,25 @@ class HomeWidgets {
 
   static final _n = NumberFormat('#,##,##0', 'en_IN');
 
-  static Future<void> refresh() async {
+  /// With [chart] false, leaves the Fuel spend chart as it was: drawing it
+  /// needs the app's screen, which a background isolate does not have.
+  static Future<void> refresh({bool chart = true}) async {
     if (!supported) return;
     try {
       final values = await _values();
       for (final e in values.entries) {
         await HomeWidget.saveWidgetData(e.key, e.value);
       }
-      await _spendChart();
+      // Redraw first: drawing the spend chart is the slow part, and only
+      // the Fuel spend widget shows it.
       for (final w in _widgets) {
         await HomeWidget.updateWidget(
             qualifiedAndroidName: 'com.fabletest.fuelpulse.$w');
       }
+      if (!chart) return;
+      await _spendChart();
+      await HomeWidget.updateWidget(
+          qualifiedAndroidName: 'com.fabletest.fuelpulse.SpendWidget');
     } catch (e) {
       debugPrint('Home widgets failed: $e');
     }

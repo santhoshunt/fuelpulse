@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../db/database_helper.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
+import '../utils/efficiency_calculator.dart';
+import '../utils/gauge_scale.dart';
 import '../utils/mileage_bands.dart';
+import '../widgets/gauge_card.dart' show GaugeCard;
+import '../widgets/period_selector.dart' show SlidingSegments;
 import '../widgets/vehicle_picker.dart' show vehicleTypeLabel;
 
 /// The five bands for one vehicle, by km/L or, with [cost], by ₹ per km: a
@@ -16,12 +21,16 @@ class MileageRangesScreen extends StatefulWidget {
   /// Cost per km ranges: lower is better, so the limits run downwards.
   final bool cost;
 
+  /// For the km/L screen: whose Dashboard gauge scale to show and save.
+  final String? vehicleId;
+
   const MileageRangesScreen({
     super.key,
     required this.vehicleName,
     required this.type,
     required this.limits,
     this.cost = false,
+    this.vehicleId,
   });
 
   @override
@@ -32,6 +41,128 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
   late List<double> _limits = List.of(widget.limits);
 
   bool get _cost => widget.cost;
+
+  /// The gauge scale Auto gives today, and the custom one (null is Auto).
+  (double, double)? _auto;
+  (double, double)? _custom;
+
+  bool get _hasGauge => !_cost && widget.vehicleId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_hasGauge) _loadGauge();
+  }
+
+  Future<void> _loadGauge() async {
+    final id = widget.vehicleId!;
+    final chrono = await DatabaseHelper().getAllLogsChrono(id);
+    final overall = calculateBrandEfficiency(chrono);
+    final avg = overall.totalLiters > 0 ? overall.overallEfficiency : null;
+    final values = [
+      ...calculateEfficiency(chrono).values.map((e) => e.value).whereType<double>(),
+      ?avg,
+    ];
+    final custom = await loadGaugeScale(id);
+    if (!mounted) return;
+    setState(() {
+      _auto = GaugeCard.scaleFor(avg, values);
+      _custom = custom;
+    });
+  }
+
+  /// Asks for the gauge's From or To in km/L.
+  Future<void> _editScale({required bool from}) async {
+    final (lo, hi) = _custom ?? _auto ?? (0.0, 25.0);
+    final controller = TextEditingController(text: _n(from ? lo : hi));
+    String? error;
+    final value = await showDialog<double>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(from ? 'Gauge starts at' : 'Gauge ends at'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration:
+                InputDecoration(suffixText: 'km/L', errorText: error),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final v = double.tryParse(controller.text.trim());
+                final ok = v != null && v >= 0 && (from ? v < hi : v > lo);
+                if (!ok) {
+                  setDialog(() => error = from
+                      ? 'From 0 up to below ${_n(hi)}'
+                      : 'More than ${_n(lo)}');
+                  return;
+                }
+                Navigator.pop(ctx, v);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (value != null) {
+      setState(() => _custom = from ? (value, hi) : (lo, value));
+    }
+  }
+
+  Widget _gaugeCard(AppColors colors) {
+    final shown = _custom ?? _auto;
+    final muted = TextStyle(color: colors.textSecondary, fontSize: 13);
+    Widget end(String label, double? v, bool from) => ListTile(
+          contentPadding: EdgeInsets.zero,
+          enabled: _custom != null,
+          title: Text(label, style: TextStyle(color: colors.textPrimary)),
+          trailing: Text(v == null ? '' : '${_n(v)} km/L ›', style: muted),
+          onTap: () => _editScale(from: from),
+        );
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('DASHBOARD GAUGE SCALE',
+                style: TextStyle(
+                    color: colors.textSecondary,
+                    fontSize: 11,
+                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            SlidingSegments(
+              labels: const ['Auto', 'Custom'],
+              selected: _custom == null ? 0 : 1,
+              onTap: (i) => setState(
+                  () => _custom = i == 0 ? null : (_auto ?? (0.0, 25.0))),
+              background: Color.alphaBlend(
+                  colors.textPrimary.withValues(alpha: 0.07), colors.page),
+              height: 38,
+            ),
+            const SizedBox(height: 8),
+            if (_custom == null)
+              Text(
+                  _auto == null
+                      ? 'Fits the scale to your fill-ups.'
+                      : 'Now ${_n(_auto!.$1)} to ${_n(_auto!.$2)} km/L, fitted '
+                          'to your average and your best and worst fill-ups.',
+                  style: muted),
+            end('From', shown?.$1, true),
+            end('To', shown?.$2, false),
+          ],
+        ),
+      ),
+    );
+  }
 
   String _n(double v) {
     final s = v == v.roundToDouble()
@@ -128,7 +259,10 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
         title: Text(_cost ? 'Cost per km ranges' : 'Mileage ranges'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, _limits),
+            onPressed: () async {
+              if (_hasGauge) await saveGaugeScale(widget.vehicleId!, _custom);
+              if (context.mounted) Navigator.pop(context, _limits);
+            },
             child: const Text('Done'),
           ),
         ],
@@ -210,6 +344,10 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
                   : 'Tap a band to change its limit. A fill-up\'s grade is the '
                       'lower of its mileage and cost grades.',
               style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+          if (_hasGauge) ...[
+            const SizedBox(height: 16),
+            _gaugeCard(colors),
+          ],
           const SizedBox(height: 20),
           OutlinedButton(
             onPressed: () => setState(() => _limits = List.of(_cost

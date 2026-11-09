@@ -25,7 +25,10 @@ final _grouped = NumberFormat('#,##,##0', 'en_IN');
 class FuelListScreen extends StatefulWidget {
   final ValueNotifier<int> reload;
 
-  const FuelListScreen({super.key, required this.reload});
+  /// A fill-up to scroll to and mark; cleared once shown.
+  final ValueNotifier<String?>? show;
+
+  const FuelListScreen({super.key, required this.reload, this.show});
 
   @override
   State<FuelListScreen> createState() => _FuelListScreenState();
@@ -38,10 +41,18 @@ class _FuelListScreenState extends State<FuelListScreen> {
   Map<String, EfficiencyResult> _eff = const {};
   bool _loading = true;
 
+  final _scroll = ScrollController();
+  final _rowKeys = <String, GlobalKey>{};
+
+  /// The row being marked, and a count that restarts its fade.
+  String? _marked;
+  int _markRun = 0;
+
   @override
   void initState() {
     super.initState();
     widget.reload.addListener(_load);
+    widget.show?.addListener(_showRequested);
     _load();
   }
 
@@ -52,12 +63,51 @@ class _FuelListScreenState extends State<FuelListScreen> {
       old.reload.removeListener(_load);
       widget.reload.addListener(_load);
     }
+    if (old.show != widget.show) {
+      old.show?.removeListener(_showRequested);
+      widget.show?.addListener(_showRequested);
+    }
   }
 
   @override
   void dispose() {
     widget.reload.removeListener(_load);
+    widget.show?.removeListener(_showRequested);
+    _scroll.dispose();
     super.dispose();
+  }
+
+  /// Scrolls to the fill-up the Dashboard asked for, then tints its row and
+  /// lets the tint fade out over 2 seconds.
+  Future<void> _showRequested() async {
+    final id = widget.show?.value;
+    if (id == null) return;
+    widget.show!.value = null;
+    // Lets the tab switch bring this tab in first.
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    for (var i = 0; i < 30 && mounted; i++) {
+      final row = _rowKeys[id]?.currentContext;
+      if (row != null && row.mounted) {
+        await Scrollable.ensureVisible(row,
+            alignment: 0.3,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic);
+        if (mounted) {
+          setState(() {
+            _marked = id;
+            _markRun++;
+          });
+        }
+        return;
+      }
+      // The list only builds rows near the screen: step down until it is.
+      if (!_scroll.hasClients) return;
+      final p = _scroll.position;
+      if (p.pixels >= p.maxScrollExtent) return;
+      _scroll.jumpTo(
+          (p.pixels + p.viewportDimension).clamp(0.0, p.maxScrollExtent));
+      await WidgetsBinding.instance.endOfFrame;
+    }
   }
 
   Future<void> _load() async {
@@ -123,6 +173,7 @@ class _FuelListScreenState extends State<FuelListScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
+                controller: _scroll,
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
                   _header(colors),
@@ -302,6 +353,26 @@ class _FuelListScreenState extends State<FuelListScreen> {
         '₹${price.toStringAsFixed(2)}/L',
     ].join(' · ');
 
+    final row = _rowContent(log, colors, at, total, sub, figures);
+    return KeyedSubtree(
+      key: _rowKeys.putIfAbsent(log.id, GlobalKey.new),
+      child: log.id != _marked
+          ? row
+          : TweenAnimationBuilder<double>(
+              key: ValueKey(_markRun),
+              tween: Tween(begin: 1, end: 0),
+              duration: const Duration(seconds: 2),
+              curve: Curves.easeIn,
+              builder: (_, t, child) => ColoredBox(
+                  color: colors.primary.withValues(alpha: 0.16 * t),
+                  child: child),
+              child: row,
+            ),
+    );
+  }
+
+  Widget _rowContent(FuelLog log, AppColors colors, DateTime? at,
+      double? total, TextStyle sub, String figures) {
     return InkWell(
       onTap: () => _tap(log),
       child: Padding(

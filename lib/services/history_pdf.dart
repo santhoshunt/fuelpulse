@@ -49,6 +49,7 @@ Future<Uint8List> buildVehicleHistoryPdf(Vehicle v) async {
   final workshops = {for (final w in await db.getWorkshops()) w.id: w.name};
   final parts = await db.getParts(v.id);
   final papers = await db.getPapers(v.id);
+  final checks = await db.getChecks(v.id);
   final trips = await db.getTrips(v.id);
   final eff = calculateEfficiency(chrono);
   final avg = averageKmL(chrono);
@@ -200,6 +201,22 @@ Future<Uint8List> buildVehicleHistoryPdf(Vehicle v) async {
               final w? => '${(w * 100).round()}%',
               null => '',
             },
+          ],
+      ]),
+      heading('Checks'),
+      table(const ['Check', 'Every', 'Last done', 'Next due'], [
+        for (final c in checks)
+          [
+            c.name,
+            [
+              if (c.everyDays != null) '${c.everyDays} days',
+              if (c.everyKm != null) '${_n.format(c.everyKm)} km',
+            ].join(' or '),
+            '${_date(c.lastDoneAt)} at ${_n.format(c.lastDoneKm)} km',
+            [
+              if (c.dueDate != null) _d.format(c.dueDate!),
+              if (c.dueKm != null) '${_n.format(c.dueKm)} km',
+            ].join(' or '),
           ],
       ]),
       heading('Papers'),

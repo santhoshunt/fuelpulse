@@ -54,6 +54,29 @@ Future<void> saveReading(String vehicleId, int km) async {
   await ServiceReminders.instance.rescheduleAll();
 }
 
+/// Saves a reading typed as text, such as "23,456" or "23456 km", from the
+/// reminder's reply box. Uses the same checks as the reading dialog.
+/// Returns the km saved, or why it was not.
+Future<({int? km, String? error})> saveTypedReading(
+    String vehicleId, String? text) async {
+  final digits =
+      RegExp(r'\d[\d, ]*').firstMatch(text ?? '')?.group(0)?.replaceAll(RegExp(r'[, ]'), '');
+  final km = int.tryParse(digits ?? '');
+  if (km == null) {
+    return (km: null, error: 'Type the reading in km, like 23456.');
+  }
+  final last = await DatabaseHelper().getLastLog(vehicleId);
+  if (last != null && km < last.odometer) {
+    return (
+      km: null,
+      error: '$km km is lower than the last fill-up (${last.odometer} km). '
+          'Type it again.'
+    );
+  }
+  await saveReading(vehicleId, km);
+  return (km: km, error: null);
+}
+
 /// Asks whether to take a photo or pick one from the gallery, then reads
 /// the odometer from it. Null when cancelled or unread.
 Future<int?> pickOdometerPhoto(BuildContext context, int? last) async {

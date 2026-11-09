@@ -20,6 +20,7 @@ import '../utils/tank_level_calculator.dart';
 import '../utils/trend_calculator.dart';
 import '../utils/trip_calculator.dart';
 import '../utils/vehicle_manager.dart';
+import '../utils/gauge_scale.dart';
 import '../widgets/gauge_card.dart';
 import '../widgets/trend_chart.dart';
 import '../widgets/vehicle_icon.dart';
@@ -35,7 +36,11 @@ import 'trip_sheets.dart';
 class DashboardScreen extends StatefulWidget {
   final ValueNotifier<int> reload;
 
-  const DashboardScreen({super.key, required this.reload});
+  /// Shows a fill-up in the Fuel tab. Without it, the mileage alert opens
+  /// the fill-up's page instead.
+  final ValueChanged<String>? onShowFillUp;
+
+  const DashboardScreen({super.key, required this.reload, this.onShowFillUp});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -49,6 +54,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double? _average;
   CostStats? _cost;
   List<SegmentTrendPoint> _trend = const [];
+
+  /// The gauge's custom From and To, or null for Auto.
+  (double, double)? _scale;
   double? _tankLevel;
   NextService? _next;
   OdometerReading? _reading;
@@ -102,6 +110,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final trip = await _db.activeTrip(vehicle.id);
     final avg = overall.totalLiters > 0 ? overall.overallEfficiency : null;
     final trend = calculateSegmentTrend(chrono);
+    final scale = await loadGaugeScale(vehicle.id);
     final prefs = await SharedPreferences.getInstance();
     final pct = prefs.getInt(kMileageAlertKey) ?? kMileageAlertDefault;
     final dismissed = prefs.getString(mileageAlertDismissedKey(vehicle.id));
@@ -122,6 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _average = avg;
       _cost = calculateCostStats(chrono);
       _trend = trend;
+      _scale = scale;
       _drop = drop;
       _partialRun = chrono.reversed.takeWhile((l) => !l.fullTank).length;
       _trip = trip;
@@ -254,6 +264,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
       const SizedBox(height: 14),
       GaugeCard(
+        scale: _scale,
         averageKmL: _average,
         worst: values.isEmpty ? null : values.reduce(math.min),
         last: last,
@@ -358,12 +369,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
+                  child: OutlinedButton.icon(
                     onPressed: () async {
                       await _updateReading();
                       await refreshTripNotification(t.vehicleId);
                     },
-                    child: const Text('Update odometer'),
+                    icon: const Icon(Icons.speed, size: 18),
+                    label: const Text('Odometer'),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -445,6 +457,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (closing != null)
                       TextButton(
                         onPressed: () async {
+                          final show = widget.onShowFillUp;
+                          if (show != null) return show(closing.id);
                           await Navigator.push(
                               context,
                               SmoothPageRoute(

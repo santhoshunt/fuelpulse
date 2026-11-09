@@ -8,4 +8,13 @@
     <string name="widget_best_pump">The pump with the best km/L</string>
     <string name="widget_odometer">Latest odometer reading, with Update</string>
     <string name="widget_trip">The trip on now with End, or Start a trip</string>
+    <!-- Each widget's name in the widget picker. -->
+    <string name="widget_name_mileage">Mileage</string>
+    <string name="widget_name_quick_add">Quick add</string>
+    <string name="widget_name_tank">Tank</string>
+    <string name="widget_name_service">Next service</string>
+    <string name="widget_name_spend">Fuel spend</string>
+    <string name="widget_name_best_pump">Best pump</string>
+    <string name="widget_name_odometer">Odometer</string>
+    <string name="widget_name_trip">Trip</string>
 </resources>

@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,9 +18,20 @@ import '../utils/efficiency_calculator.dart';
 import '../utils/odometer_reading.dart' show tankNow;
 import '../utils/tank_level_calculator.dart';
 import '../utils/trip_calculator.dart' show averageKmL;
-import '../utils/odometer_reading.dart' show loadReading;
+import '../utils/odometer_reading.dart' show loadReading, saveTypedReading;
+import 'home_widgets.dart';
 import '../utils/vehicle_manager.dart';
 import '../utils/service_schedule.dart';
+
+/// The reminder's Enter km reply when the app is not running: Android
+/// starts a background isolate for it, which needs the plugins registered.
+@pragma('vm:entry-point')
+Future<void> readingReplyInBackground(NotificationResponse r) async {
+  if (r.actionId != 'reading_reply') return;
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  await ServiceReminders.instance.handleReadingReply(r);
+}
 
 /// Phone notifications for service schedules: one at 09:00 on a due date,
 /// and one when a fill-up's odometer comes within 100 km of a due km. Also
@@ -69,11 +82,22 @@ class ServiceReminders {
       'Reading reminders',
       channelDescription: 'A weekly nudge to enter the odometer reading',
       actions: [
-        AndroidNotificationAction('odometer', 'Update',
-            showsUserInterface: true),
+        // Typed in the notification; handled without opening the app.
+        AndroidNotificationAction('reading_reply', 'Enter km',
+            inputs: [AndroidNotificationActionInput(label: 'Odometer in km')]),
         AndroidNotificationAction('odometer_photo', 'Photo',
             showsUserInterface: true),
       ],
+    ),
+  );
+
+  /// The note that replaces the reminder once a typed reading is saved.
+  static const _readingSaved = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'reading',
+      'Reading reminders',
+      channelDescription: 'A weekly nudge to enter the odometer reading',
+      timeoutAfter: 8000,
     ),
   );
 
@@ -135,11 +159,55 @@ class ServiceReminders {
         android: AndroidInitializationSettings('@drawable/ic_stat_notify'),
       ),
       onDidReceiveNotificationResponse: (r) {
+        if (r.actionId == 'reading_reply') {
+          unawaited(handleReadingReply(r));
+          return;
+        }
         final link = _linkFor(r);
         if (link != null) taps.add(link);
       },
+      onDidReceiveBackgroundNotificationResponse: readingReplyInBackground,
     );
     _ready = true;
+  }
+
+  /// A reading typed into the reminder's Enter km box. It is saved like one
+  /// typed in the app, then a short note says so, or the reminder comes
+  /// back with the reason and the box. Runs on a background isolate when
+  /// the app is closed, so everything is awaited before it returns.
+  Future<void> handleReadingReply(NotificationResponse r) async {
+    try {
+      await _init();
+      final named = Uri.tryParse(r.payload ?? '')?.queryParameters['v'];
+      final v = (named == null
+              ? null
+              : await DatabaseHelper().getVehicle(named)) ??
+          await loadActiveVehicle();
+      final link = 'fuelpulse://odometer?v=${v.id}';
+      final saved = await saveTypedReading(v.id, r.input);
+      final km = saved.km;
+      if (km == null) {
+        await _plugin.show(
+          id: _id('reading'),
+          title: 'Odometer reading · ${v.name}',
+          body: saved.error,
+          notificationDetails: _readingDetails,
+          payload: link,
+        );
+        return;
+      }
+      // The spend chart needs a screen to draw on; it updates next launch.
+      await HomeWidgets.refresh(chart: false);
+      await _plugin.show(
+        id: _id('reading_saved'),
+        title: 'Odometer saved · ${v.name}',
+        body: '${NumberFormat('#,##,##0', 'en_IN').format(km)} km',
+        notificationDetails: _readingSaved,
+        payload: link,
+      );
+    } catch (e) {
+      debugPrint('Reading reply failed: $e');
+    }
   }
 
   /// The link of the notification that launched the app, or null.

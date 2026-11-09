@@ -28,8 +28,9 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Papers** | RC, insurance, PUC certificate, licence and road tax with numbers, dates and photos, nearest expiry first, with a reminder before each one lapses |
 | **Tyres and battery** | On each vehicle's page: when each part was fitted and how much of its life in km or months is used, with a reminder near the end |
 | **Bills and receipts** | Photos or PDFs on services and fill-ups, kept in backups. PDFs open in your PDF app |
-| **Checks** | Small jobs that repeat by days or km, such as tyre pressure or chain lube, on a card in Garage → Service with a Done button and a notification when one falls due |
-| **Odometer reading reminder** | A weekly notification, Sundays at 19:00 by default, with Update and Photo buttons. It skips the week when a reading or fill-up came in the three days before |
+| **Checks** | Small jobs that repeat by days or km, such as tyre pressure or chain lube, on a card in Garage → Service, with a notification when one falls due. Tap the circle when done; tap the tick to mark it done again or undo |
+| **Odometer reading reminder** | A weekly notification, Sundays at 19:00 by default, with an Enter km box that saves the reading without opening the app, and a Photo button. It skips the week when a reading or fill-up came in the three days before |
+| **Gauge scale** | The Dashboard gauge fits its scale to your fill-ups, or uses your own From and To set in Settings → Grading → Mileage ranges |
 | **Fill up full nudge** | After three partial fill-ups in a row, the Dashboard asks for a full tank so mileage can be measured again |
 | **App lock** | Fingerprint, face or phone PIN when the app opens, and again after 1 or 5 minutes away, or immediately (Settings → Security) |
 | **Vehicle history PDF** | One PDF with a vehicle's summary, fill-ups, services, tyres and battery, papers and trips, with each bill photo on its own page at the end |
@@ -37,7 +38,7 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Price from the pump** | Picking a saved pump fills the price per litre from your last fill-up there |
 | **Charts you can read** | Touch or drag along a line chart for the date and value in a bubble; touch a bar for its month and amount |
 | **Monthly budget** | Set a fuel budget per vehicle; the Dashboard and the Fuel spend widget show what is left this month |
-| **Mileage drop alert** | When a full tank comes in well below your average (15% by default, set in Settings), the Dashboard says so and suggests what to check |
+| **Mileage drop alert** | When a full tank comes in well below your average (15% by default, set in Settings), the Dashboard says so, suggests what to check, and links to that fill-up in the Fuel list |
 | **Service reminders** | A phone notification at 09:00 on a due date, and one when a fill-up comes within 100 km of a due odometer reading |
 | **Petrol pumps** | Save the pumps you use as a brand and a station (Bharat Petroleum, MG Road) and star one to pre-select it in the form. Existing fill-ups get one pump per brand |
 | **Mileage ranges** | Five bands, Poor to Great, colour each km/L. Bikes and cars start with their own defaults, and each vehicle's limits can be changed |
@@ -48,7 +49,7 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Analytics** | Fuel: monthly spend, mileage over time, the price you paid per litre against a year earlier, pump and fuel grade comparisons and totals. Service: monthly spend, spend by type, running cost per km with service included, and what is due. One period for the page: the last 12 months, overall, or a custom range with quick picks such as the April to March financial year. Ranges over 12 months draw a line you drag along to read a month |
 | **Pump comparison** | Ranks your pumps by km/L or by cost per km over the chosen period, brand first with its logo |
 | **Year report** | One card with a year's km, fuel and service spend, mileage and trips, shared as an image |
-| **Home screen widgets** | Mileage, Quick add, Tank, Next service, Fuel spend, Best pump, Odometer (with a Photo button that reads the odometer from the camera) and Trip (End, or Start), updated whenever you use the app |
+| **Home screen widgets** | Mileage, Quick add, Tank, Next service, Fuel spend, Best pump, Odometer (with a Photo button that reads the odometer from the camera) and Trip (End, or Start), each named in the widget picker and updated whenever you use the app |
 | **Brands and fuel grades** | Each brand has its own grades (E20, Speed 97, XP100 and so on), offered as chips in the form. Analytics compares km/L per grade |
 | **Photo scan** | Fill a fill-up from photos on the Scan photos screen: the odometer (TOTAL reading, or TRIP as km travelled) and the pump display (amount, litres and rate, kept only when litres × rate matches the amount; when they disagree, the form offers amount ÷ rate as the litres). Gallery photos also set the date. Text is read on the phone and nothing is uploaded. A Report button shares what was read, with the photo, when a scan goes wrong |
 | **Cost tracking** | Enter the price per litre or the total paid and the app fills in the other. The Dashboard shows cost per km, this month's and the average monthly spend, and the latest price |

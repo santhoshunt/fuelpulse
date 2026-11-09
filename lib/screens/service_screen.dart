@@ -249,7 +249,6 @@ class _ServiceScreenState extends State<ServiceScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Column(
@@ -266,11 +265,8 @@ class _ServiceScreenState extends State<ServiceScreen> {
                     ],
                   ),
                 ),
-                Text(dueText(n),
-                    style: TextStyle(
-                        color: n.overdue ? colors.danger : colors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
+                const SizedBox(width: 12),
+                _timeLeft(n, colors),
               ],
             ),
             const SizedBox(height: 12),
@@ -318,6 +314,31 @@ class _ServiceScreenState extends State<ServiceScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Km and days left as two lines of equal weight, or how far past due.
+  Widget _timeLeft(NextService n, AppColors colors) {
+    final figure = TextStyle(
+        color: n.overdue ? colors.danger : colors.textPrimary,
+        fontSize: 15,
+        fontWeight: FontWeight.w600);
+    final caption = TextStyle(color: colors.textSecondary, fontSize: 12);
+    final lines = n.overdue
+        ? [dueText(n)]
+        : [
+            if (n.kmLeft != null) '${_grouped.format(n.kmLeft!)} km',
+            if (n.daysLeft != null)
+              '${n.daysLeft} ${n.daysLeft == 1 ? 'day' : 'days'}',
+          ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (final l in lines) Text(l, style: figure),
+        if (!n.overdue)
+          Text(lines.length > 1 ? 'left, whichever first' : 'left',
+              style: caption),
+      ],
     );
   }
 

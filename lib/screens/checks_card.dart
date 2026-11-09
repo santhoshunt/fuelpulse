@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' show NumberFormat;
+import 'package:intl/intl.dart' show DateFormat, NumberFormat;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
 import '../models/check.dart';
@@ -46,13 +49,87 @@ class _ChecksCardState extends State<ChecksCard> {
     if (mounted) setState(() => _checks = checks);
   }
 
+  /// Where Done keeps the time and km it replaced, so the tick can undo it
+  /// until the next Done.
+  static String _undoKey(String id) => 'fuel_check_undo_$id';
+
   Future<void> _done(Check c) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_undoKey(c.id),
+        jsonEncode({'at': c.lastDoneAt, 'km': c.lastDoneKm}));
     await _db.saveCheck(c.copyWith(
       lastDoneAt: DateTime.now().toIso8601String(),
       lastDoneKm: widget.odometer ?? c.lastDoneKm,
     ));
     await ServiceReminders.instance.rescheduleAll();
     await _load();
+  }
+
+  /// The tick's choices: mark the check done again now (early, before it
+  /// is due), or undo the last Done when there is one to undo.
+  Future<void> _tickMenu(Check c) async {
+    final canUndo = (await SharedPreferences.getInstance())
+            .getString(_undoKey(c.id)) !=
+        null;
+    final at = DateTime.tryParse(c.lastDoneAt);
+    final when = at == null ? '' : DateFormat('d MMM').format(at);
+    if (!mounted) return;
+    final undo = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text(when.isEmpty ? c.name : '${c.name} · done $when',
+                  style: Theme.of(ctx).textTheme.titleMedium),
+            ),
+            ListTile(
+              leading: const Icon(Icons.task_alt),
+              title: const Text('Done again now'),
+              onTap: () => Navigator.pop(ctx, false),
+            ),
+            if (canUndo)
+              ListTile(
+                leading: const Icon(Icons.undo),
+                title: Text(when.isEmpty ? 'Undo the last Done' : 'Undo the $when Done'),
+                onTap: () => Navigator.pop(ctx, true),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (undo == null) return;
+    undo ? await _undo(c) : await _done(c);
+  }
+
+  /// Puts back the time and km from before the last Done.
+  Future<void> _undo(Check c) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_undoKey(c.id));
+    if (raw == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${c.name} is up to date. Nothing to undo.')));
+      }
+      return;
+    }
+    final m = jsonDecode(raw) as Map<String, dynamic>;
+    await _db.saveCheck(c.copyWith(
+      lastDoneAt: m['at'] as String,
+      lastDoneKm: (m['km'] as num).toInt(),
+    ));
+    await prefs.remove(_undoKey(c.id));
+    await ServiceReminders.instance.rescheduleAll();
+    await _load();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${c.name} marked not done')));
+    }
   }
 
   Future<void> _edit([Check? c]) async {
@@ -100,19 +177,22 @@ class _ChecksCardState extends State<ChecksCard> {
       child: Card(
         margin: EdgeInsets.zero,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
                   Expanded(
-                    child: Text('CHECKS',
-                        style: TextStyle(
-                            color: colors.textSecondary,
-                            fontSize: 11,
-                            letterSpacing: 1.2,
-                            fontWeight: FontWeight.w600)),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Text('CHECKS',
+                          style: TextStyle(
+                              color: colors.textSecondary,
+                              fontSize: 11,
+                              letterSpacing: 1.2,
+                              fontWeight: FontWeight.w600)),
+                    ),
                   ),
                   IconButton(
                     tooltip: 'Add check',
@@ -123,7 +203,7 @@ class _ChecksCardState extends State<ChecksCard> {
               ),
               if (_checks.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(right: 8, bottom: 8),
+                  padding: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
                   child: Text(
                       'Things you check yourself, like tyre pressure every 2 '
                       'weeks or chain lube every 500 km. Tap + to add one.',
@@ -137,11 +217,28 @@ class _ChecksCardState extends State<ChecksCard> {
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
                       children: [
-                        Icon(Icons.task_alt,
-                            color: c.isDue(now, widget.odometer)
-                                ? colors.danger
-                                : colors.primary),
-                        const SizedBox(width: 10),
+                        // A circle when due, a tick once done: tap the
+                        // circle to mark it done, the tick to undo.
+                        c.isDue(now, widget.odometer)
+                            ? IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 40, height: 40),
+                                tooltip: 'Mark ${c.name} done',
+                                icon: Icon(Icons.radio_button_unchecked,
+                                    color: colors.textSecondary),
+                                onPressed: () => _done(c),
+                              )
+                            : IconButton(
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 40, height: 40),
+                                tooltip: '${c.name}: done again or undo',
+                                icon: Icon(Icons.task_alt,
+                                    color: colors.primary),
+                                onPressed: () => _tickMenu(c),
+                              ),
+                        const SizedBox(width: 2),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -151,18 +248,13 @@ class _ChecksCardState extends State<ChecksCard> {
                                       color: colors.textPrimary,
                                       fontSize: 15,
                                       fontWeight: FontWeight.w600)),
-                              Text(_status(c), style: muted),
+                              Text(_status(c),
+                                  style: c.isDue(now, widget.odometer)
+                                      ? muted.copyWith(color: colors.danger)
+                                      : muted),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        c.isDue(now, widget.odometer)
-                            ? FilledButton(
-                                onPressed: () => _done(c),
-                                child: const Text('Done'))
-                            : OutlinedButton(
-                                onPressed: () => _done(c),
-                                child: const Text('Done')),
                       ],
                     ),
                   ),
@@ -252,6 +344,8 @@ class _CheckDialogState extends State<_CheckDialog> {
       return;
     }
     await DatabaseHelper().deleteCheck(c.id);
+    await (await SharedPreferences.getInstance())
+        .remove(_ChecksCardState._undoKey(c.id));
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -294,7 +388,9 @@ class _CheckDialogState extends State<_CheckDialog> {
                     controller: _days,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                        labelText: 'Every', suffixText: 'days'),
+                        labelText: 'Days',
+                        suffixText: 'days',
+                        helperText: 'Every so many days'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -303,7 +399,9 @@ class _CheckDialogState extends State<_CheckDialog> {
                     controller: _km,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                        labelText: 'Or every', suffixText: 'km'),
+                        labelText: 'Km',
+                        suffixText: 'km',
+                        helperText: 'Or every so many km'),
                   ),
                 ),
               ],

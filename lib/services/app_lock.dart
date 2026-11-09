@@ -17,6 +17,22 @@ const kAppLockAfterDefault = 60;
 
 bool get appLockSupported => !kIsWeb && Platform.isAndroid;
 
+int _pickersOpen = 0;
+bool _skipNextLock = false;
+
+/// Runs [pick], a camera, gallery or file picker, so that coming back from
+/// it does not lock the app. The app pauses while the picker is open; that
+/// pause is marked at the time, because the picker's result and the resume
+/// can reach Dart in either order.
+Future<T> withoutRelock<T>(Future<T> Function() pick) async {
+  _pickersOpen++;
+  try {
+    return await pick();
+  } finally {
+    _pickersOpen--;
+  }
+}
+
 Future<bool> appLockEnabled() async {
   if (!appLockSupported) return false;
   final prefs = await SharedPreferences.getInstance();
@@ -80,9 +96,14 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
     if (_asking) return;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       _leftAt ??= DateTime.now();
+      if (_pickersOpen > 0) _skipNextLock = true;
     } else if (state == AppLifecycleState.resumed) {
       final left = _leftAt;
       _leftAt = null;
+      if (_skipNextLock) {
+        _skipNextLock = false;
+        return;
+      }
       if (left == null || _locked || !await appLockEnabled()) return;
       final prefs = await SharedPreferences.getInstance();
       final after = prefs.getInt(kAppLockAfterKey) ?? kAppLockAfterDefault;

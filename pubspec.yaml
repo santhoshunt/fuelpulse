@@ -1,7 +1,7 @@
 name: fuelpulse
 description: "My H'ness: an offline logbook for fill-ups and km/L, services, trips and papers."
 publish_to: 'none'
-version: 4.2.0+16
+version: 4.3.0+17
 
 environment:
   sdk: ^3.11.0
@@ -15,8 +15,8 @@ dependencies:
   shared_preferences: ^2.2.0
   intl: ^0.19.0
   csv: ^6.0.0
-  share_plus: ^12.0.2
-  file_picker: ^10.1.0
+  share_plus: ^13.3.1
+  file_picker: ^13.3.2
   path_provider: ^2.1.0
   # Google Drive backup. Pinned to the 6.x google_sign_in API surface
   # (constructor + signIn/signInSilently + authenticatedClient extension) —

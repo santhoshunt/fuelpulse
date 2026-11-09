@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/photo_scan.dart';
 import '../services/update_installer.dart';
 import '../theme/app_colors.dart';
+import '../services/app_lock.dart';
 
 /// ML Kit only runs on the phone, so scan entry points are hidden
 /// elsewhere (and in widget tests).
@@ -55,8 +56,8 @@ class _ScanPhotosScreenState extends State<ScanPhotosScreen> {
   }
 
   Future<void> _take(ScanKind kind, ImageSource source) async {
-    final photo = await ImagePicker()
-        .pickImage(source: source, maxWidth: 2400, imageQuality: 92);
+    final photo = await withoutRelock(() => ImagePicker()
+        .pickImage(source: source, maxWidth: 2400, imageQuality: 92));
     if (photo == null || !mounted) return;
     // A gallery pick may be a copy made just now, so its file time only
     // counts when it is clearly older than the pick.

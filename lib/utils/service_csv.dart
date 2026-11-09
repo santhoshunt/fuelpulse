@@ -11,6 +11,7 @@ import '../models/service_record.dart';
 import '../models/service_type.dart';
 import '../models/workshop.dart';
 import '../services/service_reminders.dart';
+import '../services/app_lock.dart';
 
 /// Columns of a service CSV, in order. `types` is a `|`-separated list of
 /// service type names; `workshop` is a workshop name. Both are created when
@@ -39,9 +40,9 @@ Future<void> exportServiceTemplate() async {
 /// Picks a CSV and adds its services to [vehicleId]. Returns how many were
 /// imported, or null when the picker is cancelled.
 Future<int?> importServicesCsv({required String vehicleId}) async {
-  final result = await FilePicker.platform
-      .pickFiles(type: FileType.custom, allowedExtensions: ['csv']);
-  final path = result?.files.singleOrNull?.path;
+  final picked = await withoutRelock(() =>
+      FilePicker.pickFile(type: FileType.custom, allowedExtensions: ['csv']));
+  final path = picked?.path;
   if (path == null) return null;
   final content = (await File(path).readAsString()).replaceAll('\r\n', '\n');
   return importServiceRows(const CsvToListConverter(eol: '\n').convert(content),

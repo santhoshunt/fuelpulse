@@ -101,7 +101,18 @@ class SlidingSegments extends StatelessWidget {
                         child: Center(
                           child: AnimatedDefaultTextStyle(
                             duration: const Duration(milliseconds: 200),
+                            // The theme's font: a bare TextStyle would drop
+                            // it, which shows only where it differs from
+                            // the phone's default (as in the README shots).
                             style: TextStyle(
+                              fontFamily: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.fontFamily,
+                              fontFamilyFallback: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.fontFamilyFallback,
                               fontSize: 14,
                               color: i == selected
                                   ? colors.textPrimary

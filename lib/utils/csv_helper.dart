@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/fuel_log.dart';
+import '../services/app_lock.dart';
 
 // ── CSV Export ────────────────────────────────────────────────────────
 
@@ -72,13 +73,11 @@ Future<void> exportCsv(List<FuelLog> logs, {required String vehicleName}) async 
 /// Returns null if the user cancels the file picker.
 /// Throws on invalid CSV format (missing required columns).
 Future<List<FuelLog>?> importCsv({required String vehicleId}) async {
-  final result = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: ['csv'],
-  );
-
-  if (result == null || result.files.isEmpty) return null;
-  final filePath = result.files.single.path;
+  final picked = await withoutRelock(() => FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+      ));
+  final filePath = picked?.path;
   if (filePath == null) return null;
 
   final content = await File(filePath).readAsString();
