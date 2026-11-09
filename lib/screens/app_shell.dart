@@ -35,11 +35,19 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
+class _AppShellState extends State<AppShell>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   /// Bumped whenever stored data may have changed (a tab switch, a save in
   /// another tab). Tabs that show stored data listen and read it again.
   final _reload = ValueNotifier<int>(0);
   int _tab = 0;
+
+  /// Runs once per tab switch: the new tab fades in while rising a few
+  /// pixels into place.
+  late final _tabIn = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 220), value: 1);
+  late final _tabCurve =
+      CurvedAnimation(parent: _tabIn, curve: Curves.easeOutCubic);
 
   /// The Garage tab's list: 0 Service, 1 Trips, 2 Papers.
   final _garageSection = ValueNotifier<int>(0);
@@ -102,6 +110,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       _select(tab);
       return;
     }
+    if (uri.host == 'trips') {
+      _garageSection.value = 1;
+      _select(2);
+      return;
+    }
     // A trip notification's link names the trip's vehicle (?v=id).
     final named = uri.queryParameters['v'];
     final v = (named == null ? null : await DatabaseHelper().getVehicle(named)) ??
@@ -125,12 +138,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     prefill: outcome.isEmpty ? null : outcome)));
       case 'odometer':
         await showOdometerDialog(context,
-            vehicleId: v.id, vehicleName: v.name);
+            vehicleId: v.id,
+            vehicleName: v.name,
+            scanFirst: uri.queryParameters['photo'] == '1');
       case 'trip':
         final t = await DatabaseHelper().activeTrip(v.id);
         if (t == null || !mounted) break;
         await Navigator.push(
             context, SmoothPageRoute(page: TripScreen(tripId: t.id)));
+      case 'starttrip':
+        final on = await DatabaseHelper().activeTrip(v.id);
+        if (!mounted) break;
+        if (on != null) {
+          await Navigator.push(
+              context, SmoothPageRoute(page: TripScreen(tripId: on.id)));
+        } else {
+          await showStartTripSheet(context, v);
+        }
       case 'endtrip':
         final t = await DatabaseHelper().activeTrip(v.id);
         if (t == null || !mounted) break;
@@ -147,6 +171,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _reload.dispose();
     _garageSection.dispose();
+    _tabIn.dispose();
     super.dispose();
   }
 
@@ -230,6 +255,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _select(int i) {
     if (i == _tab) return;
     setState(() => _tab = i);
+    _tabIn.forward(from: 0);
     // The tab coming into view may show data another tab just changed.
     _reload.value++;
   }
@@ -240,7 +266,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       body: Column(
         children: [
           Expanded(
-            child: IndexedStack(
+            child: FadeTransition(
+              opacity: _tabCurve,
+              child: SlideTransition(
+                position: Tween(
+                        begin: const Offset(0, 0.012), end: Offset.zero)
+                    .animate(_tabCurve),
+                child: IndexedStack(
               index: _tab,
               children: [
                 DashboardScreen(reload: _reload),
@@ -249,6 +281,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 AnalyticsScreen(reload: _reload),
                 const SettingsScreen(),
               ],
+            ),
+              ),
             ),
           ),
           const UpdateBanner(),

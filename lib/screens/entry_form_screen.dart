@@ -101,6 +101,11 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   Trip? _trip;
   bool _onTrip = true;
   bool _tripEndsHere = false;
+
+  /// The price text the chosen pump filled in, and the date of the fill-up
+  /// it came from. A price typed or scanned since differs, and stays.
+  String? _pumpPrice;
+  DateTime? _pumpPriceAt;
   late bool _loading = _isEdit;
 
   String _selectedFuelType = kDefaultFuelType;
@@ -167,6 +172,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 ? _selectedBrand
                 : grades.keys.firstOrNull ?? _selectedBrand);
       });
+      // Before the scan, so a scanned price wins.
+      await _applyPumpPrice();
       // After the base odometer is known: a TRIP read needs it.
       final prefill = widget.prefill;
       if (prefill != null && !prefill.isEmpty) _applyOutcome(prefill);
@@ -592,6 +599,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       setState(() => v.startsWith('p:')
           ? _choose(_pumps.firstWhere((p) => 'p:${p.id}' == v))
           : _choose(null, brand: v.substring(2)));
+      await _applyPumpPrice();
       return;
     }
     // Footer action: add a pump, then select it.
@@ -601,6 +609,33 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     setState(() {
       _pumps = pumps;
       if (added != null) _choose(added);
+    });
+    await _applyPumpPrice();
+  }
+
+  /// Adding only: fills the price from the last priced fill-up at the
+  /// chosen pump, while the field is empty or still holds what the previous
+  /// pump put there. Through the normal listener, so the total follows.
+  Future<void> _applyPumpPrice() async {
+    if (_isEdit) return;
+    final text = _priceController.text.trim();
+    if (text.isNotEmpty && text != _pumpPrice) return;
+    final pump = _pump;
+    final log = pump == null ? null : await _db.lastPricedLogAt(pump.id);
+    final price = log == null
+        ? null
+        : log.pricePerLitre ?? computePricePerLitre(log.totalCost, log.liters);
+    if (!mounted) return;
+    setState(() {
+      if (price == null) {
+        if (text.isNotEmpty) _priceController.text = '';
+        _pumpPrice = null;
+        _pumpPriceAt = null;
+      } else {
+        _pumpPrice = price.toStringAsFixed(2);
+        _pumpPriceAt = DateTime.tryParse(log!.timestamp);
+        _priceController.text = _pumpPrice!;
+      }
     });
   }
 
@@ -1031,6 +1066,24 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                     ),
                   ),
                 ],
+              ),
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _priceController,
+                builder: (context, value, _) =>
+                    _pumpPrice == null || value.text != _pumpPrice
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 6, left: 4),
+                            child: Text(
+                                _pumpPriceAt == null
+                                    ? 'Price from your last fill-up here. '
+                                        'Change it if it moved.'
+                                    : 'Price from your '
+                                        '${DateFormat('d MMM').format(_pumpPriceAt!)} '
+                                        'fill-up here. Change it if it moved.',
+                                style: TextStyle(
+                                    color: colors.textSecondary, fontSize: 12)),
+                          ),
               ),
               ?_buildPumpCheck(colors),
               const SizedBox(height: 12),

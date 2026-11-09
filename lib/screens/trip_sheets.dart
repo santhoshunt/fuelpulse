@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 
 import '../db/database_helper.dart';
@@ -16,20 +15,6 @@ import 'scan_photos_screen.dart' show photoScanSupported;
 import 'service_screen.dart' show latestOdometer;
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
-
-/// Reads the odometer from a camera photo. Null when cancelled or unread.
-Future<int?> scanOdometer(int? last) async {
-  final x = await ImagePicker().pickImage(
-      source: ImageSource.camera, maxWidth: 2400, imageQuality: 92);
-  if (x == null) return null;
-  final scanner = PhotoScanner();
-  try {
-    final r = await scanner.scan(x.path, ScanKind.odometer, lastOdometer: last);
-    return r.odometer?.value;
-  } finally {
-    await scanner.close();
-  }
-}
 
 /// Refreshes the ongoing trip notification with the km so far, when
 /// [vehicleId] has a trip on.

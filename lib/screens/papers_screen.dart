@@ -45,7 +45,10 @@ Widget statusTag(String text, Color color) => Container(
 class PapersScreen extends StatefulWidget {
   final ValueNotifier<int> reload;
 
-  const PapersScreen({super.key, required this.reload});
+  /// Bumped by the Garage + button while this list shows.
+  final ValueNotifier<int>? addTaps;
+
+  const PapersScreen({super.key, required this.reload, this.addTaps});
 
   @override
   State<PapersScreen> createState() => _PapersScreenState();
@@ -62,8 +65,11 @@ class _PapersScreenState extends State<PapersScreen> {
   void initState() {
     super.initState();
     widget.reload.addListener(_load);
+    widget.addTaps?.addListener(_add);
     _load();
   }
+
+  void _add() => _open();
 
   @override
   void didUpdateWidget(PapersScreen old) {
@@ -77,6 +83,7 @@ class _PapersScreenState extends State<PapersScreen> {
   @override
   void dispose() {
     widget.reload.removeListener(_load);
+    widget.addTaps?.removeListener(_add);
     super.dispose();
   }
 
@@ -116,20 +123,6 @@ class _PapersScreenState extends State<PapersScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Material(
-              color: colors.card,
-              shape: CircleBorder(side: BorderSide(color: colors.cardBorder)),
-              child: IconButton(
-                tooltip: 'Add paper',
-                icon: Icon(Icons.add, color: colors.primary),
-                onPressed: () => _open(),
-              ),
-            ),
-          ],
-        ),
         if (_papers.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 60),

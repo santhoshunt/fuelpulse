@@ -23,44 +23,103 @@ class PeriodSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+    return SlidingSegments(
+      labels: [for (final m in options) label?.call(m) ?? '${m}M'],
+      selected: options.indexOf(months),
+      onTap: (i) => onChanged(options[i]),
+      background:
+          Color.alphaBlend(colors.textPrimary.withValues(alpha: 0.07), colors.card),
+      height: 34,
+    );
+  }
+}
+
+/// Segmented buttons whose white highlight slides to the one picked. Used
+/// by [PeriodSelector] and the fill-up form's Odometer / KM Travelled
+/// switch.
+class SlidingSegments extends StatelessWidget {
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onTap;
+  final Color background;
+  final double height;
+
+  /// Per label; a disabled one is dimmed and ignores taps. All enabled when
+  /// null.
+  final List<bool>? enabled;
+
+  const SlidingSegments({
+    super.key,
+    required this.labels,
+    required this.selected,
+    required this.onTap,
+    required this.background,
+    required this.height,
+    this.enabled,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final n = labels.length;
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(
-            colors.textPrimary.withValues(alpha: 0.07), colors.card),
+        color: background,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          for (final m in options)
-            Expanded(
-              child: Semantics(
-                button: true,
-                selected: m == months,
-                child: GestureDetector(
-                  onTap: () => onChanged(m),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    height: 34,
-                    alignment: Alignment.center,
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          children: [
+            if (selected >= 0)
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment(n == 1 ? 0 : -1 + 2 * selected / (n - 1), 0),
+                child: FractionallySizedBox(
+                  widthFactor: 1 / n,
+                  heightFactor: 1,
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: m == months ? colors.card : Colors.transparent,
+                      color: colors.card,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text(label?.call(m) ?? '${m}M',
-                        style: TextStyle(
-                            fontSize: 14,
-                            color: m == months
-                                ? colors.textPrimary
-                                : colors.textSecondary,
-                            fontWeight: m == months
-                                ? FontWeight.w600
-                                : FontWeight.w400)),
                   ),
                 ),
               ),
+            Row(
+              children: [
+                for (var i = 0; i < n; i++)
+                  Expanded(
+                    child: Semantics(
+                      button: true,
+                      selected: i == selected,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: enabled?[i] == false ? null : () => onTap(i),
+                        child: Center(
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 200),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: i == selected
+                                  ? colors.textPrimary
+                                  : colors.textSecondary.withValues(
+                                      alpha: enabled?[i] == false ? 0.5 : 1),
+                              fontWeight:
+                                  i == selected ? FontWeight.w600 : FontWeight.w400,
+                            ),
+                            child: Text(labels[i]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -40,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _workshopCount = 0;
   int _typeCount = 0;
   int _alertPercent = kMileageAlertDefault;
+  int _lowFuelKm = kLowFuelKmDefault;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final workshops = await db.getWorkshops();
     final prefs = await SharedPreferences.getInstance();
     final alert = prefs.getInt(kMileageAlertKey) ?? kMileageAlertDefault;
+    final lowFuel = prefs.getInt(kLowFuelKmKey) ?? kLowFuelKmDefault;
     final types = await db.getServiceTypes();
     if (!mounted) return;
     setState(() {
@@ -60,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _workshopCount = workshops.length;
       _typeCount = types.length;
       _alertPercent = alert;
+      _lowFuelKm = lowFuel;
     });
   }
 
@@ -80,6 +83,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(kMileageAlertKey, r.value);
     if (mounted) setState(() => _alertPercent = r.value);
+  }
+
+  /// The range left at which an odometer reading warns of low fuel; 0 is
+  /// off.
+  Future<void> _pickLowFuel() async {
+    final r = await showOptionPicker<int>(
+      context: context,
+      title: 'Low fuel warning',
+      options: [
+        for (final km in const [0, 30, 50, 100])
+          PickerOption(
+              value: km, label: km == 0 ? 'Off' : 'Under $km km left'),
+      ],
+      selected: _lowFuelKm,
+    );
+    if (r is! PickerPicked<int>) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(kLowFuelKmKey, r.value);
+    if (mounted) setState(() => _lowFuelKm = r.value);
   }
 
   /// A restore (Drive or backup file) or a data wipe changed what Settings
@@ -203,6 +225,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _alertPercent == 0 ? 'Off' : '$_alertPercent%',
                     style: value),
                 onTap: _pickAlert,
+              ),
+              SettingsRow(
+                icon: Icons.local_gas_station_outlined,
+                label: 'Low fuel warning',
+                trailing: Text(_lowFuelKm == 0 ? 'Off' : '$_lowFuelKm km',
+                    style: value),
+                onTap: _pickLowFuel,
               ),
             ]),
             const SizedBox(height: 32),

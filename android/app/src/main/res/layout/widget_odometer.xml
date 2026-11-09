@@ -5,5 +5,6 @@
         <TextView android:id="@+id/value" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="18sp" android:textStyle="bold" android:textColor="#F5F7FA" android:maxLines="1" android:ellipsize="end" />
         <TextView android:id="@+id/sub" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12sp" android:textColor="#AFC0D8" android:maxLines="2" android:ellipsize="end" />
     </LinearLayout>
+    <TextView android:id="@+id/photo" android:layout_width="wrap_content" android:layout_height="36dp" android:layout_marginEnd="8dp" android:paddingStart="12dp" android:paddingEnd="12dp" android:gravity="center" android:text="Photo" android:textColor="#FFFFFF" android:textStyle="bold" android:background="@drawable/widget_button_outline" />
     <TextView android:id="@+id/update" android:layout_width="wrap_content" android:layout_height="36dp" android:paddingStart="14dp" android:paddingEnd="14dp" android:gravity="center" android:text="Update" android:textColor="#FFFFFF" android:textStyle="bold" android:background="@drawable/widget_button" />
 </LinearLayout>

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:ui' show Rect;
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Reads an odometer photo or a fuel pump display photo on the phone with
@@ -448,4 +449,18 @@ class PhotoScanner {
   }
 
   Future<void> close() => _recognizer.close();
+}
+
+/// Reads the odometer from a camera photo. Null when cancelled or unread.
+Future<int?> scanOdometer(int? last) async {
+  final x = await ImagePicker().pickImage(
+      source: ImageSource.camera, maxWidth: 2400, imageQuality: 92);
+  if (x == null) return null;
+  final scanner = PhotoScanner();
+  try {
+    final r = await scanner.scan(x.path, ScanKind.odometer, lastOdometer: last);
+    return r.odometer?.value;
+  } finally {
+    await scanner.close();
+  }
 }

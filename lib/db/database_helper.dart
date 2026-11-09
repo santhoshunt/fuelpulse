@@ -408,6 +408,18 @@ class DatabaseHelper {
     return FuelLog.fromMap(maps.first);
   }
 
+  /// The newest fill-up at [pumpId] that has a price or a total, from any
+  /// vehicle: a pump's rate is the same whatever you fill.
+  Future<FuelLog?> lastPricedLogAt(String pumpId) async {
+    final db = await database;
+    final maps = await db.query('fuel_logs',
+        where: 'pumpId = ? AND (pricePerLitre IS NOT NULL OR totalCost IS NOT NULL)',
+        whereArgs: [pumpId],
+        orderBy: 'timestamp DESC',
+        limit: 1);
+    return maps.isEmpty ? null : FuelLog.fromMap(maps.first);
+  }
+
   /// Delete all log entries.
   Future<void> deleteAllLogs() async {
     final db = await database;

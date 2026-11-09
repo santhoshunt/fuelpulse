@@ -20,6 +20,10 @@ const String kMileageAlertKey = 'fuel_mileage_alert_percent';
 const int kMileageAlertDefault = 15;
 String mileageAlertDismissedKey(String vehicleId) =>
     'fuel_mileage_alert_dismissed_$vehicleId';
+// Low fuel warning: the range in km below which a reading raises it (0 is
+// off).
+const String kLowFuelKmKey = 'fuel_low_fuel_km';
+const int kLowFuelKmDefault = 50;
 
 // ── Fuel types ───────────────────────────────────────────────────────
 const String kDefaultFuelType = 'Normal';

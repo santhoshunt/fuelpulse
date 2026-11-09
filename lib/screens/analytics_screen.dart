@@ -21,6 +21,7 @@ import '../widgets/brand_logo.dart';
 import '../widgets/month_bar_chart.dart';
 import '../widgets/month_line_chart.dart';
 import '../widgets/period_selector.dart';
+import '../widgets/switch_transition.dart';
 import '../widgets/trend_chart.dart';
 import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
 import 'year_report_screen.dart';
@@ -155,20 +156,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     onChanged: (v) => setState(() => _serviceView = v == 1),
                   ),
                   const SizedBox(height: 14),
-                  if (_serviceView)
-                    ..._serviceCards(colors)
-                  else if (_chrono.isEmpty)
-                    _notEnough(colors)
-                  else ...[
-                    _spendCard(colors),
-                    const SizedBox(height: 14),
-                    _mileageCard(),
-                    ..._priceCard(colors),
-                    ..._pumpCard(colors),
-                    ..._gradeCard(colors),
-                    const SizedBox(height: 14),
-                    _totalsCard(colors),
-                  ],
+                  SwitchTransition(
+                    index: _serviceView ? 1 : 0,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: _serviceView
+                          ? _serviceCards(colors)
+                          : _chrono.isEmpty
+                              ? [_notEnough(colors)]
+                              : [
+                                  _spendCard(colors),
+                                  const SizedBox(height: 14),
+                                  _mileageCard(),
+                                  ..._priceCard(colors),
+                                  ..._pumpCard(colors),
+                                  ..._gradeCard(colors),
+                                  const SizedBox(height: 14),
+                                  _totalsCard(colors),
+                                ],
+                    ),
+                  ),
                 ],
               ),
       ),
@@ -479,6 +486,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ),
       if (period != null) ...[const SizedBox(height: 8), period],
       const SizedBox(height: 14),
+      SwitchTransition(
+        index: byCost ? 1 : 0,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
       if (sorted.isEmpty)
         Text('Appears once a full-tank segment closes in this period.',
             style: TextStyle(color: colors.textSecondary, fontSize: 13))
@@ -547,6 +559,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ],
             ),
           ),
+          ],
+        ),
+      ),
       if (footnote != null) Text(footnote, style: muted),
     ]);
   }

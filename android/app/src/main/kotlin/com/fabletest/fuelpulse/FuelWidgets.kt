@@ -99,6 +99,18 @@ class BestPumpWidget : HomeWidgetProvider() {
         }
 }
 
+class TripWidget : HomeWidgetProvider() {
+    override fun onUpdate(c: Context, m: AppWidgetManager, ids: IntArray, d: SharedPreferences) =
+        draw(c, m, ids, R.layout.widget_trip) {
+            setTextViewText(R.id.cap, "TRIP · " + d.text("vehicle", "My H'ness"))
+            setTextViewText(R.id.value, d.text("trip_title", "No trip on"))
+            setTextViewText(R.id.sub, d.text("trip_sub"))
+            setTextViewText(R.id.action, d.text("trip_action", "Start"))
+            setOnClickPendingIntent(R.id.action, open(c, d.text("trip_link", "fuelpulse://starttrip")))
+            setOnClickPendingIntent(R.id.root, open(c, d.text("trip_open", "fuelpulse://trips")))
+        }
+}
+
 class OdometerWidget : HomeWidgetProvider() {
     override fun onUpdate(c: Context, m: AppWidgetManager, ids: IntArray, d: SharedPreferences) =
         draw(c, m, ids, R.layout.widget_odometer) {
@@ -106,6 +118,7 @@ class OdometerWidget : HomeWidgetProvider() {
             setTextViewText(R.id.value, d.text("odo_value", "—"))
             setTextViewText(R.id.sub, d.text("odo_sub"))
             setOnClickPendingIntent(R.id.update, open(c, "fuelpulse://odometer"))
+            setOnClickPendingIntent(R.id.photo, open(c, "fuelpulse://odometer?photo=1"))
             setOnClickPendingIntent(R.id.root, open(c, "fuelpulse://odometer"))
         }
 }

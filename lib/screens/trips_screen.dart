@@ -33,7 +33,10 @@ Widget fuelQualityTag(BuildContext context, FuelQuality q) {
 class TripsScreen extends StatefulWidget {
   final ValueNotifier<int> reload;
 
-  const TripsScreen({super.key, required this.reload});
+  /// Bumped by the Garage + button while this list shows.
+  final ValueNotifier<int>? addTaps;
+
+  const TripsScreen({super.key, required this.reload, this.addTaps});
 
   @override
   State<TripsScreen> createState() => _TripsScreenState();
@@ -52,7 +55,14 @@ class _TripsScreenState extends State<TripsScreen> {
   void initState() {
     super.initState();
     widget.reload.addListener(_load);
+    widget.addTaps?.addListener(_add);
     _load();
+  }
+
+  /// One trip at a time: + opens the trip on now, else starts one.
+  void _add() {
+    final active = _trips.where((t) => t.isActive).firstOrNull;
+    active == null ? _start() : _open(active);
   }
 
   @override
@@ -67,6 +77,7 @@ class _TripsScreenState extends State<TripsScreen> {
   @override
   void dispose() {
     widget.reload.removeListener(_load);
+    widget.addTaps?.removeListener(_add);
     super.dispose();
   }
 
@@ -113,7 +124,6 @@ class _TripsScreenState extends State<TripsScreen> {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
-    final active = _trips.where((t) => t.isActive).firstOrNull;
     final muted = TextStyle(color: colors.textSecondary, fontSize: 13);
     final strong = TextStyle(
         color: colors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600);
@@ -130,27 +140,6 @@ class _TripsScreenState extends State<TripsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            if (active != null)
-              FilledButton.tonalIcon(
-                onPressed: () => _open(active),
-                icon: const Icon(Icons.route),
-                label: const Text('Trip in progress'),
-              )
-            else
-              Material(
-                color: colors.card,
-                shape: CircleBorder(side: BorderSide(color: colors.cardBorder)),
-                child: IconButton(
-                  tooltip: 'Start a trip',
-                  icon: Icon(Icons.add, color: colors.primary),
-                  onPressed: _start,
-                ),
-              ),
-          ],
-        ),
         if (_trips.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 60),

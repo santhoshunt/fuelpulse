@@ -6,8 +6,8 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../theme/app_colors.dart';
 
 /// One point per month as a line with a filled area, for ranges too long
-/// for a bar a month. Drag or tap along it to read a month; it starts on
-/// the latest one.
+/// for a bar a month. Touch or drag along it to read a month in a bubble,
+/// the same way as [TrendChart]; the reading stays until the next touch.
 class MonthLineChart extends StatefulWidget {
   final List<(DateTime month, double value)> points;
   final String Function(double) formatValue;
@@ -24,9 +24,6 @@ class MonthLineChart extends StatefulWidget {
 
 class _MonthLineChartState extends State<MonthLineChart> {
   int? _picked;
-
-  int get _index => (_picked ?? widget.points.length - 1)
-      .clamp(0, math.max(0, widget.points.length - 1));
 
   @override
   void didUpdateWidget(MonthLineChart old) {
@@ -48,48 +45,31 @@ class _MonthLineChartState extends State<MonthLineChart> {
     final colors = AppColors.of(context);
     final pts = widget.points;
     if (pts.isEmpty) return const SizedBox.shrink();
-    final (month, value) = pts[_index];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text.rich(
-          TextSpan(
-            text: '${DateFormat('MMM y').format(month)} · ',
-            style: TextStyle(color: colors.textSecondary, fontSize: 13),
-            children: [
-              TextSpan(
-                  text: widget.formatValue(value),
-                  style: TextStyle(
-                      color: colors.textPrimary, fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 6),
-        LayoutBuilder(
-          builder: (context, box) => GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (d) => _pick(d.localPosition.dx, box.maxWidth),
-            onHorizontalDragUpdate: (d) =>
-                _pick(d.localPosition.dx, box.maxWidth),
-            child: SizedBox(
-              height: 150,
-              width: box.maxWidth,
-              child: CustomPaint(
-                painter: _ChartPainter(
-                  values: [for (final p in pts) p.$2],
-                  months: [for (final p in pts) p.$1],
-                  picked: _index,
-                  line: colors.secondary,
-                  marker: colors.textSecondary,
-                  dot: colors.card,
-                  label: colors.textSecondary,
-                  axis: colors.cardBorder,
-                ),
-              ),
+    return LayoutBuilder(
+      builder: (context, box) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (d) => _pick(d.localPosition.dx, box.maxWidth),
+        onHorizontalDragStart: (d) => _pick(d.localPosition.dx, box.maxWidth),
+        onHorizontalDragUpdate: (d) => _pick(d.localPosition.dx, box.maxWidth),
+        child: SizedBox(
+          height: 170,
+          width: box.maxWidth,
+          child: CustomPaint(
+            painter: _ChartPainter(
+              values: [for (final p in pts) p.$2],
+              months: [for (final p in pts) p.$1],
+              picked: _picked,
+              formatValue: widget.formatValue,
+              line: colors.secondary,
+              marker: colors.textSecondary,
+              bubble: colors.textPrimary,
+              bubbleText: colors.card,
+              label: colors.textSecondary,
+              axis: colors.cardBorder,
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -98,30 +78,40 @@ class _ChartPainter extends CustomPainter {
   static const pad = 8.0;
   final List<double> values;
   final List<DateTime> months;
-  final int picked;
-  final Color line, marker, dot, label, axis;
+  final int? picked;
+  final String Function(double) formatValue;
+  final Color line, marker, bubble, bubbleText, label, axis;
 
   _ChartPainter({
     required this.values,
     required this.months,
     required this.picked,
+    required this.formatValue,
     required this.line,
     required this.marker,
-    required this.dot,
+    required this.bubble,
+    required this.bubbleText,
     required this.label,
     required this.axis,
   });
 
+  TextPainter _text(String s, Color c, double size, FontWeight w) => TextPainter(
+        text: TextSpan(
+            text: s, style: TextStyle(color: c, fontSize: size, fontWeight: w)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
   @override
   void paint(Canvas canvas, Size size) {
-    const labelH = 16.0;
+    const labelH = 16.0, topRoom = 20.0;
     final plotBottom = size.height - labelH;
     final top = values.reduce(math.max);
     final n = values.length;
     double x(int i) =>
         n < 2 ? size.width / 2 : pad + (size.width - 2 * pad) * i / (n - 1);
-    double y(double v) =>
-        top <= 0 ? plotBottom : plotBottom - (plotBottom - 6) * v / top;
+    double y(double v) => top <= 0
+        ? plotBottom
+        : plotBottom - (plotBottom - topRoom) * v / top;
 
     canvas.drawLine(Offset(0, plotBottom), Offset(size.width, plotBottom),
         Paint()..color = axis);
@@ -143,34 +133,50 @@ class _ChartPainter extends CustomPainter {
           ..strokeWidth = 2
           ..strokeJoin = StrokeJoin.round);
 
-    final px = x(picked);
-    final dash = Paint()
-      ..color = marker
-      ..strokeWidth = 1;
-    for (var yy = 2.0; yy < plotBottom; yy += 6) {
-      canvas.drawLine(Offset(px, yy), Offset(px, math.min(yy + 3, plotBottom)), dash);
-    }
-    canvas.drawCircle(Offset(px, y(values[picked])), 5, Paint()..color = line);
-    canvas.drawCircle(Offset(px, y(values[picked])), 2.5, Paint()..color = dot);
-
     // A label under each January, plus the first month, skipping any that
     // would touch the one before.
     var lastRight = -1.0;
     for (var i = 0; i < n; i++) {
       if (i != 0 && months[i].month != 1) continue;
-      final tp = TextPainter(
-        text: TextSpan(
-            text: i == 0 && months[i].month != 1
-                ? DateFormat('MMM yy').format(months[i])
-                : '${months[i].year}',
-            style: TextStyle(color: label, fontSize: 11)),
-        textDirection: TextDirection.ltr,
-      )..layout();
+      final tp = _text(
+          i == 0 && months[i].month != 1
+              ? DateFormat('MMM yy').format(months[i])
+              : '${months[i].year}',
+          label,
+          11,
+          FontWeight.w400);
       final left = (x(i) - tp.width / 2).clamp(0.0, size.width - tp.width);
       if (left < lastRight + 6) continue;
       tp.paint(canvas, Offset(left, plotBottom + 3));
       lastRight = left + tp.width;
     }
+
+    final p = picked;
+    if (p == null || p >= n) return;
+    final at = Offset(x(p), y(values[p]));
+    final dash = Paint()
+      ..color = marker
+      ..strokeWidth = 1;
+    for (var yy = 2.0; yy < plotBottom; yy += 6) {
+      canvas.drawLine(
+          Offset(at.dx, yy), Offset(at.dx, math.min(yy + 3, plotBottom)), dash);
+    }
+    canvas.drawCircle(at, 5, Paint()..color = line);
+    canvas.drawCircle(at, 2.5, Paint()..color = bubbleText);
+    final date =
+        _text(DateFormat('MMM y').format(months[p]), bubbleText, 10, FontWeight.w400);
+    final value = _text(formatValue(values[p]), bubbleText, 12, FontWeight.w700);
+    final w = math.max(date.width, value.width) + 16;
+    final h = date.height + value.height + 10;
+    final left = (at.dx - w / 2).clamp(0.0, size.width - w);
+    final topY = at.dy - 10 - h >= 0 ? at.dy - 10 - h : at.dy + 10;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(left, topY, w, h), const Radius.circular(8)),
+        Paint()..color = bubble);
+    date.paint(canvas, Offset(left + (w - date.width) / 2, topY + 5));
+    value.paint(
+        canvas, Offset(left + (w - value.width) / 2, topY + 5 + date.height));
   }
 
   @override

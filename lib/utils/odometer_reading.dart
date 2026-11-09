@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
+import '../screens/scan_photos_screen.dart' show photoScanSupported;
+import '../services/photo_scan.dart' show scanOdometer;
 import '../services/service_reminders.dart';
 
 /// The latest odometer you typed outside a fill-up, per vehicle. It feeds
@@ -46,17 +48,27 @@ Future<void> saveReading(String vehicleId, int km) async {
   await prefs.setString(_key(vehicleId),
       jsonEncode({'km': km, 'at': DateTime.now().toIso8601String()}));
   await ServiceReminders.instance.checkKmDue(vehicleId, km);
+  await ServiceReminders.instance.checkLowFuel(vehicleId, km);
 }
 
-/// Asks for today's odometer. Returns true when a reading was saved.
+/// Asks for today's odometer. Returns true when a reading was saved. With
+/// [scanFirst] (the Odometer widget's Photo button) the camera opens first
+/// and its reading fills the field.
 Future<bool> showOdometerDialog(BuildContext context,
-    {required String vehicleId, required String vehicleName}) async {
+    {required String vehicleId,
+    required String vehicleName,
+    bool scanFirst = false}) async {
   final last = await DatabaseHelper().getLastLog(vehicleId);
   final current = await loadReading(vehicleId);
+  final scanned = scanFirst && photoScanSupported
+      ? await scanOdometer(current?.km ?? last?.odometer)
+      : null;
   if (!context.mounted) return false;
-  final controller =
-      TextEditingController(text: (current?.km ?? last?.odometer)?.toString() ?? '');
-  String? error;
+  final controller = TextEditingController(
+      text: (scanned ?? current?.km ?? last?.odometer)?.toString() ?? '');
+  String? error = scanFirst && scanned == null && photoScanSupported
+      ? "Couldn't read the odometer; type it in"
+      : null;
   final km = await showDialog<int>(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -71,7 +83,28 @@ Future<bool> showOdometerDialog(BuildContext context,
               autofocus: true,
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
-                  labelText: 'Reading now', suffixText: 'km', errorText: error),
+                labelText: 'Reading now',
+                suffixText: 'km',
+                errorText: error,
+                suffixIcon: photoScanSupported
+                    ? IconButton(
+                        tooltip: 'Read it from a photo',
+                        icon: const Icon(Icons.photo_camera_outlined),
+                        onPressed: () async {
+                          final v = await scanOdometer(
+                              current?.km ?? last?.odometer);
+                          setDialog(() {
+                            if (v == null) {
+                              error = "Couldn't read the odometer; type it in";
+                            } else {
+                              controller.text = '$v';
+                              error = null;
+                            }
+                          });
+                        },
+                      )
+                    : null,
+              ),
             ),
             const SizedBox(height: 8),
             Text(

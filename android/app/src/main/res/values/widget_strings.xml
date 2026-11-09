@@ -7,4 +7,5 @@
     <string name="widget_spend">This month\'s fuel spend and the last six months</string>
     <string name="widget_best_pump">The pump with the best km/L</string>
     <string name="widget_odometer">Latest odometer reading, with Update</string>
+    <string name="widget_trip">The trip on now with End, or Start a trip</string>
 </resources>

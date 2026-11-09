@@ -22,12 +22,15 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 |---|---|
 | **Dashboard** | A speedometer-style gauge with the needle on your average km/L, the odometer on a seven-segment display, fuel left after the last refill with the range it gives, worst, last and best km/L, spend tiles and the last 12 segments' mileage |
 | **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, services, analytics, tank size, make and model, picture, and grading ranges; switch with the vehicle button on the Dashboard or the name on the Fuel tab |
-| **Garage tab** | Service, Trips and Papers for the active vehicle behind one switch |
+| **Garage tab** | Service, Trips and Papers for the active vehicle: swipe between them or tap the switch, and add to the one on show with the + by the title |
 | **Service records** | Log each service with its date, odometer, workshop, the work done, the cost and photos or PDFs of the bills, and schedule the next one by km, months or both. Garage → Service shows what is due next and the history; the Dashboard shows the next service |
 | **Trip log** | Start a trip from Garage → Trips, and a card on the Dashboard and a notification with Add fill-up, Odometer and End trip buttons stay while it is on. End it at the reading where it really finished, or with the trip ends here switch on a fill-up. Each km is charged at the km/L of the full tank it was driven on, so the fuel shows as Estimate, then Measured, or Exact when the trip starts and ends on full fill-ups |
 | **Papers** | RC, insurance, PUC certificate, licence and road tax with numbers, dates and photos, nearest expiry first, with a reminder before each one lapses |
 | **Tyres and battery** | On each vehicle's page: when each part was fitted and how much of its life in km or months is used, with a reminder near the end |
 | **Bills and receipts** | Photos or PDFs on services and fill-ups, kept in backups. PDFs open in your PDF app |
+| **Low fuel warning** | When an odometer reading leaves less than 50 km of fuel (Off, 30, 50 or 100 km in Settings → Grading), a notification, once per refill |
+| **Price from the pump** | Picking a saved pump fills the price per litre from your last fill-up there |
+| **Charts you can read** | Touch or drag along a line chart for the date and value in a bubble; touch a bar for its month and amount |
 | **Monthly budget** | Set a fuel budget per vehicle; the Dashboard and the Fuel spend widget show what is left this month |
 | **Mileage drop alert** | When a full tank comes in well below your average (15% by default, set in Settings), the Dashboard says so and suggests what to check |
 | **Service reminders** | A phone notification at 09:00 on a due date, and one when a fill-up comes within 100 km of a due odometer reading |
@@ -40,7 +43,7 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Analytics** | Fuel: monthly spend, mileage over time, the price you paid per litre against a year earlier, pump and fuel grade comparisons and totals. Service: monthly spend, spend by type, running cost per km with service included, and what is due. One period for the page: the last 12 months, overall, or a custom range with quick picks such as the April to March financial year. Ranges over 12 months draw a line you drag along to read a month |
 | **Pump comparison** | Ranks your pumps by km/L or by cost per km over the chosen period, brand first with its logo |
 | **Year report** | One card with a year's km, fuel and service spend, mileage and trips, shared as an image |
-| **Home screen widgets** | Mileage, Quick add, Tank, Next service, Fuel spend, Best pump and Odometer, updated whenever you use the app |
+| **Home screen widgets** | Mileage, Quick add, Tank, Next service, Fuel spend, Best pump, Odometer (with a Photo button that reads the odometer from the camera) and Trip (End, or Start), updated whenever you use the app |
 | **Brands and fuel grades** | Each brand has its own grades (E20, Speed 97, XP100 and so on), offered as chips in the form. Analytics compares km/L per grade |
 | **Photo scan** | Fill a fill-up from photos on the Scan photos screen: the odometer (TOTAL reading, or TRIP as km travelled) and the pump display (amount, litres and rate, kept only when litres × rate matches the amount; when they disagree, the form offers amount ÷ rate as the litres). Gallery photos also set the date. Text is read on the phone and nothing is uploaded. A Report button shares what was read, with the photo, when a scan goes wrong |
 | **Cost tracking** | Enter the price per litre or the total paid and the app fills in the other. The Dashboard shows cost per km, this month's and the average monthly spend, and the latest price |

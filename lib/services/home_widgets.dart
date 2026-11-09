@@ -13,6 +13,7 @@ import '../utils/efficiency_calculator.dart';
 import '../utils/odometer_reading.dart';
 import '../utils/service_schedule.dart';
 import '../utils/tank_level_calculator.dart';
+import '../utils/trip_calculator.dart';
 import '../utils/vehicle_manager.dart';
 
 /// Fills the Android home screen widgets (FuelWidgets.kt) for the active
@@ -29,6 +30,7 @@ class HomeWidgets {
     'SpendWidget',
     'BestPumpWidget',
     'OdometerWidget',
+    'TripWidget',
   ];
 
   static final _n = NumberFormat('#,##,##0', 'en_IN');
@@ -105,6 +107,19 @@ class HomeWidgets {
       ].join(' · ');
     }
 
+    // The Trip widget: the trip on now, or the last one with Start.
+    final trip = await db.activeTrip(v.id);
+    final lastTrip = trip == null ? (await db.getTrips(v.id)).firstOrNull : null;
+    final tripKm = trip == null
+        ? 0
+        : math.max(0, (odo ?? trip.startOdometer) - trip.startOdometer);
+    final tripCost = trip == null
+        ? null
+        : tripFuel(trip, chrono,
+                endOdometer: odo ?? trip.startOdometer, averageKmL: avg)
+            ?.cost;
+    final tripSince = trip == null ? null : DateTime.tryParse(trip.startAt);
+
     final dueParts = next == null
         ? const <String>[]
         : [
@@ -147,6 +162,26 @@ class HomeWidgets {
               : 'average ₹${_n.format(cost.avgMonthlySpend)} a month',
       'pump_title': pumpTitle,
       'pump_figures': pumpFigures,
+      'trip_title': trip == null
+          ? 'No trip on'
+          : '${trip.name} · ${_n.format(tripKm)} km',
+      'trip_sub': trip != null
+          ? [
+              if (tripSince != null)
+                'since ${DateFormat('E HH:mm').format(tripSince)}',
+              if (tripCost != null) '₹${_n.format(tripCost)}',
+            ].join(' · ')
+          : lastTrip == null
+              ? 'Start one as you leave'
+              : 'last: ${lastTrip.name}, '
+                  '${_n.format(math.max(0, (lastTrip.endOdometer ?? lastTrip.startOdometer) - lastTrip.startOdometer))} km',
+      'trip_action': trip == null ? 'Start' : 'End',
+      'trip_link': trip == null
+          ? 'fuelpulse://starttrip?v=${v.id}'
+          : 'fuelpulse://endtrip?v=${v.id}',
+      'trip_open': trip == null
+          ? 'fuelpulse://trips'
+          : 'fuelpulse://trip?v=${v.id}',
       'odo_value': odo == null ? '—' : '${_n.format(odo)} km',
       'odo_sub': reading == null
           ? 'Tap Update to enter today\'s reading'

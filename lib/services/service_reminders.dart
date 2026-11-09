@@ -11,6 +11,11 @@ import 'package:timezone/timezone.dart' as tz;
 import '../db/database_helper.dart';
 import '../models/service_record.dart';
 import '../models/trip.dart';
+import '../utils/constants.dart';
+import '../utils/efficiency_calculator.dart';
+import '../utils/odometer_reading.dart' show tankNow;
+import '../utils/tank_level_calculator.dart';
+import '../utils/trip_calculator.dart' show averageKmL;
 import '../utils/service_schedule.dart';
 
 /// Phone notifications for service schedules: one at 09:00 on a due date,
@@ -43,6 +48,16 @@ class ServiceReminders {
       'Renewals and parts',
       channelDescription:
           'When a paper needs renewing or a tyre or battery replacing',
+    ),
+  );
+
+  static const _lowFuel = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'low_fuel',
+      'Low fuel',
+      channelDescription: 'When a reading leaves little fuel in the tank',
+      importance: Importance.high,
+      priority: Priority.high,
     ),
   );
 
@@ -96,7 +111,7 @@ class ServiceReminders {
     tzdata.initializeTimeZones();
     await _plugin.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings('@drawable/ic_stat_notify'),
       ),
       onDidReceiveNotificationResponse: (r) {
         final link = _linkFor(r);
@@ -299,6 +314,49 @@ class ServiceReminders {
     final at = now.isBefore(nine) ? nine : nine.add(const Duration(days: 1));
     await prefs.setString(key, at.toIso8601String());
     return at;
+  }
+
+  /// After an odometer reading: notifies once per refill when the fuel left
+  /// would last less than the limit set in Settings → Grading.
+  Future<void> checkLowFuel(String vehicleId, int odometer) async {
+    if (!supported) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final limit = prefs.getInt(kLowFuelKmKey) ?? kLowFuelKmDefault;
+      if (limit <= 0) return;
+      final db = DatabaseHelper();
+      final v = await db.getVehicle(vehicleId);
+      final cap = v?.tankCapacity;
+      if (v == null || cap == null) return;
+      final chrono = await db.getAllLogsChrono(vehicleId);
+      final avg = averageKmL(chrono);
+      if (chrono.isEmpty || avg == null) return;
+      final last = chrono.last;
+      final after =
+          calculateTankLevels(chrono, cap, calculateEfficiency(chrono))[last.id];
+      if (after == null) return;
+      final left = tankNow(
+          afterRefill: after,
+          refillOdometer: last.odometer,
+          reading: (km: odometer, at: DateTime.now()),
+          avgKmL: avg);
+      if (left == null) return;
+      final range = left * avg;
+      final key = 'fuel_low_fuel_warned_${vehicleId}_${last.id}';
+      if (range >= limit || (prefs.getBool(key) ?? false)) return;
+      await _init();
+      await _plugin.show(
+        id: _id('lowfuel$vehicleId'),
+        title: 'Low fuel · ${v.name}',
+        body: 'About ${left.toStringAsFixed(1)} L left, enough for about '
+            '${range.round()} km.',
+        notificationDetails: _lowFuel,
+        payload: 'fuelpulse://dashboard',
+      );
+      await prefs.setBool(key, true);
+    } catch (e) {
+      debugPrint('Low fuel check failed: $e');
+    }
   }
 
   /// After a fill-up: notifies once per service when [odometer] is within

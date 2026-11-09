@@ -59,7 +59,10 @@ String dueText(NextService n) {
 class ServiceScreen extends StatefulWidget {
   final ValueNotifier<int> reload;
 
-  const ServiceScreen({super.key, required this.reload});
+  /// Bumped by the Garage + button while this list shows.
+  final ValueNotifier<int>? addTaps;
+
+  const ServiceScreen({super.key, required this.reload, this.addTaps});
 
   @override
   State<ServiceScreen> createState() => _ServiceScreenState();
@@ -80,8 +83,11 @@ class _ServiceScreenState extends State<ServiceScreen> {
   void initState() {
     super.initState();
     widget.reload.addListener(_load);
+    widget.addTaps?.addListener(_add);
     _load();
   }
+
+  void _add() => _open();
 
   @override
   void didUpdateWidget(ServiceScreen old) {
@@ -95,6 +101,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
   @override
   void dispose() {
     widget.reload.removeListener(_load);
+    widget.addTaps?.removeListener(_add);
     super.dispose();
   }
 
@@ -148,21 +155,6 @@ class _ServiceScreenState extends State<ServiceScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Material(
-                        color: colors.card,
-                        shape: CircleBorder(
-                            side: BorderSide(color: colors.cardBorder)),
-                        child: IconButton(
-                          tooltip: 'Add service',
-                          icon: Icon(Icons.add, color: colors.primary),
-                          onPressed: () => _open(),
-                        ),
-                      ),
-                    ],
-                  ),
                   if (_services.isEmpty)
                     _empty(colors)
                   else ...[
