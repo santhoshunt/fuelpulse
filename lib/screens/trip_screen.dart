@@ -14,6 +14,7 @@ import '../widgets/trip_strip.dart';
 import 'refill_detail_screen.dart';
 import 'service_screen.dart' show latestOdometer;
 import 'settings/settings_widgets.dart' show confirmListDelete;
+import 'trip_share_screen.dart';
 import 'trip_sheets.dart';
 import 'trips_screen.dart' show fuelQualityTag;
 
@@ -189,6 +190,12 @@ class _TripScreenState extends State<TripScreen> {
       appBar: AppBar(
         title: Text(t.name),
         actions: [
+          IconButton(
+            tooltip: 'Share as an image',
+            icon: const Icon(Icons.ios_share),
+            onPressed: () => Navigator.push(context,
+                SmoothPageRoute(page: TripShareScreen(tripId: t.id))),
+          ),
           PopupMenuButton<String>(
             onSelected: (v) => v == 'rename' ? _rename() : _delete(),
             itemBuilder: (_) => const [

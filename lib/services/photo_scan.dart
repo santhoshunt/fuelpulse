@@ -451,10 +451,12 @@ class PhotoScanner {
   Future<void> close() => _recognizer.close();
 }
 
-/// Reads the odometer from a camera photo. Null when cancelled or unread.
-Future<int?> scanOdometer(int? last) async {
-  final x = await ImagePicker().pickImage(
-      source: ImageSource.camera, maxWidth: 2400, imageQuality: 92);
+/// Reads the odometer from a photo, taken with the camera or picked from
+/// the gallery. Null when cancelled or unread.
+Future<int?> scanOdometer(int? last,
+    {ImageSource source = ImageSource.camera}) async {
+  final x = await ImagePicker()
+      .pickImage(source: source, maxWidth: 2400, imageQuality: 92);
   if (x == null) return null;
   final scanner = PhotoScanner();
   try {

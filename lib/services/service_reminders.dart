@@ -16,6 +16,8 @@ import '../utils/efficiency_calculator.dart';
 import '../utils/odometer_reading.dart' show tankNow;
 import '../utils/tank_level_calculator.dart';
 import '../utils/trip_calculator.dart' show averageKmL;
+import '../utils/odometer_reading.dart' show loadReading;
+import '../utils/vehicle_manager.dart';
 import '../utils/service_schedule.dart';
 
 /// Phone notifications for service schedules: one at 09:00 on a due date,
@@ -61,6 +63,20 @@ class ServiceReminders {
     ),
   );
 
+  static const _readingDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'reading',
+      'Reading reminders',
+      channelDescription: 'A weekly nudge to enter the odometer reading',
+      actions: [
+        AndroidNotificationAction('odometer', 'Update',
+            showsUserInterface: true),
+        AndroidNotificationAction('odometer_photo', 'Photo',
+            showsUserInterface: true),
+      ],
+    ),
+  );
+
   static const _tripDetails = NotificationDetails(
     android: AndroidNotificationDetails(
       'trips',
@@ -91,11 +107,16 @@ class ServiceReminders {
   static Uri? _linkFor(NotificationResponse r) {
     final payload = Uri.tryParse(r.payload ?? '');
     final v = payload?.queryParameters['v'];
-    Uri link(String host) => Uri(
-        scheme: 'fuelpulse',
-        host: host,
-        queryParameters: v == null ? null : {'v': v});
+    Uri link(String host, [Map<String, String> more = const {}]) {
+      final q = <String, String>{'v': ?v, ...more};
+      return Uri(
+          scheme: 'fuelpulse',
+          host: host,
+          queryParameters: q.isEmpty ? null : q);
+    }
     switch (r.actionId) {
+      case 'odometer_photo':
+        return link('odometer', {'photo': '1'});
       case 'add_fill_up':
         return link('add');
       case 'odometer':
@@ -278,7 +299,28 @@ class ServiceReminders {
                 'good for ${p.lifeMonths} months.',
           );
         }
+        for (final c in await db.getChecks(v.id)) {
+          final due = c.dueDate;
+          if (due == null) continue;
+          var at = DateTime(due.year, due.month, due.day, 9);
+          if (!at.isAfter(now)) {
+            final caught = await _catchUp(
+                prefs, 'fuel_check_catchup_${c.id}_${c.lastDoneAt}', now, due);
+            if (caught == null) continue;
+            at = caught;
+          }
+          await _plugin.zonedSchedule(
+            id: _id('check${c.id}'),
+            scheduledDate: tz.TZDateTime.from(at.toUtc(), tz.UTC),
+            notificationDetails: _details,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            title: 'Check due · ${v.name}',
+            body: '${c.name}: every ${c.everyDays} days.',
+            payload: 'fuelpulse://service',
+          );
+        }
       }
+      await _scheduleReadingReminder(prefs, now);
       // A trip notification can't be swiped away; take down any whose trip
       // has ended, or was deleted with its vehicle or by a restore.
       final live = <int>{};
@@ -296,6 +338,45 @@ class ServiceReminders {
     } catch (e) {
       debugPrint('Service reminders failed: $e');
     }
+  }
+
+  /// The weekly odometer reading reminder for the active vehicle, at the
+  /// day and time set in Settings. Skipped a week when a reading or
+  /// fill-up came within 3 days before it.
+  Future<void> _scheduleReadingReminder(
+      SharedPreferences prefs, DateTime now) async {
+    final setting = prefs.getString(kReadingReminderKey) ?? kReadingReminderDefault;
+    final parts = setting.split('|');
+    if (parts.length != 2) return;
+    final weekday = int.tryParse(parts[0]);
+    final hm = parts[1].split(':');
+    if (weekday == null || hm.length != 2) return;
+    final v = await loadActiveVehicle();
+    var at = DateTime(now.year, now.month, now.day, int.parse(hm[0]), int.parse(hm[1]));
+    while (at.weekday != weekday || !at.isAfter(now)) {
+      at = DateTime(at.year, at.month, at.day + 1, at.hour, at.minute);
+    }
+    final reading = await loadReading(v.id);
+    final log = await DatabaseHelper().getLastLog(v.id);
+    final lastLog = log == null ? null : DateTime.tryParse(log.timestamp);
+    final last = [?reading?.at, ?lastLog].fold<DateTime?>(
+        null, (m, d) => m == null || d.isAfter(m) ? d : m);
+    if (last != null && at.difference(last) < const Duration(days: 3)) {
+      at = DateTime(at.year, at.month, at.day + 7, at.hour, at.minute);
+    }
+    final days = last == null ? null : at.difference(last).inDays;
+    await _plugin.zonedSchedule(
+      id: _id('reading'),
+      scheduledDate: tz.TZDateTime.from(at.toUtc(), tz.UTC),
+      notificationDetails: _readingDetails,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      title: 'Odometer reading · ${v.name}',
+      body: days == null
+          ? 'Enter a reading to keep the fuel and service estimates right.'
+          : 'Last reading $days days ago. Update it to keep the fuel and '
+              'service estimates right.',
+      payload: 'fuelpulse://odometer?v=${v.id}',
+    );
   }
 
   /// The one catch-up reminder for something first scheduled inside its
@@ -399,6 +480,21 @@ class ServiceReminders {
           body: 'Good for ${km.format(life)} km from ${km.format(p.fittedOdometer)}, '
               'now ${km.format(odometer)} km',
           notificationDetails: _renewals,
+        );
+        await prefs.setBool(key, true);
+      }
+      for (final c in await db.getChecks(vehicleId)) {
+        final due = c.dueKm;
+        if (due == null || odometer < due) continue;
+        final key = 'fuel_check_km_${c.id}_${c.lastDoneKm}';
+        if (prefs.getBool(key) ?? false) continue;
+        await _plugin.show(
+          id: _id('checkkm${c.id}'),
+          title: 'Check due · ${vehicle?.name ?? 'your vehicle'}',
+          body: '${c.name}: every ${km.format(c.everyKm)} km, last at '
+              '${km.format(c.lastDoneKm)} km.',
+          notificationDetails: _details,
+          payload: 'fuelpulse://service',
         );
         await prefs.setBool(key, true);
       }

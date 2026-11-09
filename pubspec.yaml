@@ -1,7 +1,7 @@
 name: fuelpulse
 description: "My H'ness: an offline logbook for fill-ups and km/L, services, trips and papers."
 publish_to: 'none'
-version: 4.1.0+15
+version: 4.2.0+16
 
 environment:
   sdk: ^3.11.0
@@ -37,6 +37,8 @@ dependencies:
   timezone: ^0.11.2
   flutter_svg: ^2.3.2
   home_widget: ^0.10.0
+  local_auth: ^3.0.2
+  pdf: ^3.13.1
 
 dev_dependencies:
   flutter_test:
@@ -53,3 +55,4 @@ flutter:
     - assets/brand_logos/
     # OpenMoji (openmoji.org), CC BY-SA 4.0
     - assets/vehicle_icons/
+    - assets/fonts/

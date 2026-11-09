@@ -13,11 +13,20 @@ class TripStrip extends StatelessWidget {
   final int endKm;
   final List<int> fillUpKms;
 
+  /// Colours for drawing on a dark card (the shared trip image); the
+  /// theme's when null.
+  final Color? lineColor, fillColor, startColor, endColor, labelColor;
+
   const TripStrip({
     super.key,
     required this.startKm,
     required this.endKm,
     required this.fillUpKms,
+    this.lineColor,
+    this.fillColor,
+    this.startColor,
+    this.endColor,
+    this.labelColor,
   });
 
   @override
@@ -32,11 +41,11 @@ class TripStrip extends StatelessWidget {
           startKm: startKm,
           endKm: endKm,
           fillUpKms: fillUpKms,
-          line: colors.secondary,
-          fill: colors.primary,
-          start: bandColor(4, b),
-          end: colors.danger,
-          label: colors.textSecondary,
+          line: lineColor ?? colors.secondary,
+          fill: fillColor ?? colors.primary,
+          start: startColor ?? bandColor(4, b),
+          end: endColor ?? colors.danger,
+          label: labelColor ?? colors.textSecondary,
         ),
       ),
     );

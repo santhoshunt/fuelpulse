@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart' show ImageSource;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
@@ -49,11 +50,42 @@ Future<void> saveReading(String vehicleId, int km) async {
       jsonEncode({'km': km, 'at': DateTime.now().toIso8601String()}));
   await ServiceReminders.instance.checkKmDue(vehicleId, km);
   await ServiceReminders.instance.checkLowFuel(vehicleId, km);
+  // Moves the weekly reading reminder past this reading.
+  await ServiceReminders.instance.rescheduleAll();
+}
+
+/// Asks whether to take a photo or pick one from the gallery, then reads
+/// the odometer from it. Null when cancelled or unread.
+Future<int?> pickOdometerPhoto(BuildContext context, int? last) async {
+  final source = await showModalBottomSheet<ImageSource>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_camera_outlined),
+            title: const Text('Take a photo'),
+            onTap: () => Navigator.pop(ctx, ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Choose from gallery'),
+            onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+  if (source == null) return null;
+  return scanOdometer(last, source: source);
 }
 
 /// Asks for today's odometer. Returns true when a reading was saved. With
-/// [scanFirst] (the Odometer widget's Photo button) the camera opens first
-/// and its reading fills the field.
+/// [scanFirst] (the Odometer widget's Photo button) the photo choice opens
+/// first and its reading fills the field.
 Future<bool> showOdometerDialog(BuildContext context,
     {required String vehicleId,
     required String vehicleName,
@@ -61,7 +93,9 @@ Future<bool> showOdometerDialog(BuildContext context,
   final last = await DatabaseHelper().getLastLog(vehicleId);
   final current = await loadReading(vehicleId);
   final scanned = scanFirst && photoScanSupported
-      ? await scanOdometer(current?.km ?? last?.odometer)
+      ? context.mounted
+          ? await pickOdometerPhoto(context, current?.km ?? last?.odometer)
+          : null
       : null;
   if (!context.mounted) return false;
   final controller = TextEditingController(
@@ -91,8 +125,8 @@ Future<bool> showOdometerDialog(BuildContext context,
                         tooltip: 'Read it from a photo',
                         icon: const Icon(Icons.photo_camera_outlined),
                         onPressed: () async {
-                          final v = await scanOdometer(
-                              current?.km ?? last?.odometer);
+                          final v = await pickOdometerPhoto(
+                              ctx, current?.km ?? last?.odometer);
                           setDialog(() {
                             if (v == null) {
                               error = "Couldn't read the odometer; type it in";

@@ -24,6 +24,10 @@ String mileageAlertDismissedKey(String vehicleId) =>
 // off).
 const String kLowFuelKmKey = 'fuel_low_fuel_km';
 const int kLowFuelKmDefault = 50;
+// Odometer reading reminder: 'off', or 'weekday|HH:mm' with weekday 1
+// (Monday) to 7 (Sunday). Sunday 19:00 until changed.
+const String kReadingReminderKey = 'fuel_reading_reminder';
+const String kReadingReminderDefault = '7|19:00';
 
 // ── Fuel types ───────────────────────────────────────────────────────
 const String kDefaultFuelType = 'Normal';

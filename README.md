@@ -24,10 +24,15 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, services, analytics, tank size, make and model, picture, and grading ranges; switch with the vehicle button on the Dashboard or the name on the Fuel tab |
 | **Garage tab** | Service, Trips and Papers for the active vehicle: swipe between them or tap the switch, and add to the one on show with the + by the title |
 | **Service records** | Log each service with its date, odometer, workshop, the work done, the cost and photos or PDFs of the bills, and schedule the next one by km, months or both. Garage → Service shows what is due next and the history; the Dashboard shows the next service |
-| **Trip log** | Start a trip from Garage → Trips, and a card on the Dashboard and a notification with Add fill-up, Odometer and End trip buttons stay while it is on. End it at the reading where it really finished, or with the trip ends here switch on a fill-up. Each km is charged at the km/L of the full tank it was driven on, so the fuel shows as Estimate, then Measured, or Exact when the trip starts and ends on full fill-ups |
+| **Trip log** | Start a trip from Garage → Trips, and a card on the Dashboard and a notification with Add fill-up, Odometer and End trip buttons stay while it is on. End it at the reading where it really finished, or with the trip ends here switch on a fill-up. Each km is charged at the km/L of the full tank it was driven on, so the fuel shows as Estimate, then Measured, or Exact when the trip starts and ends on full fill-ups. Share a trip as an image card, or export all trips as CSV |
 | **Papers** | RC, insurance, PUC certificate, licence and road tax with numbers, dates and photos, nearest expiry first, with a reminder before each one lapses |
 | **Tyres and battery** | On each vehicle's page: when each part was fitted and how much of its life in km or months is used, with a reminder near the end |
 | **Bills and receipts** | Photos or PDFs on services and fill-ups, kept in backups. PDFs open in your PDF app |
+| **Checks** | Small jobs that repeat by days or km, such as tyre pressure or chain lube, on a card in Garage → Service with a Done button and a notification when one falls due |
+| **Odometer reading reminder** | A weekly notification, Sundays at 19:00 by default, with Update and Photo buttons. It skips the week when a reading or fill-up came in the three days before |
+| **Fill up full nudge** | After three partial fill-ups in a row, the Dashboard asks for a full tank so mileage can be measured again |
+| **App lock** | Fingerprint, face or phone PIN when the app opens, and again after 1 or 5 minutes away, or immediately (Settings → Security) |
+| **Vehicle history PDF** | One PDF with a vehicle's summary, fill-ups, services, tyres and battery, papers and trips, with each bill photo on its own page at the end |
 | **Low fuel warning** | When an odometer reading leaves less than 50 km of fuel (Off, 30, 50 or 100 km in Settings → Grading), a notification, once per refill |
 | **Price from the pump** | Picking a saved pump fills the price per litre from your last fill-up there |
 | **Charts you can read** | Touch or drag along a line chart for the date and value in a bubble; touch a bar for its month and amount |
@@ -51,12 +56,12 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Brand management** | Add, rename and remove brands and their grades. A rename updates every past fill-up |
 | **Tank level estimation** | Estimates the litres after each fill-up, and what's left now from an odometer reading entered on the Dashboard or the Odometer widget |
 | **Full / Partial fill tracking** | Handles both full-tank and partial-fill entries correctly |
-| **CSV import / export** | Export or import the current vehicle's fill-ups as CSV, and import services from a CSV template |
+| **CSV import / export** | Export or import the current vehicle's fill-ups as CSV, import services from a CSV template, and export every vehicle's trips |
 | **Backup file** | Export one compressed file with every vehicle, its fill-ups and services, pumps, workshops, brands and grades, and settings, and restore it on any phone |
 | **Google Drive backup** | Optional daily, weekly or monthly upload of the same backup file. The app can only see files it created in your Drive |
 | **Logos and pictures** | Shell, HP, Indian Oil, Bharat Petroleum, Nayara Energy and Jio-BP show their logos; give any brand your own. Vehicles show an OpenMoji picture (Motorcycle or Scooter for bikes) or your own photo |
 | **Light and dark themes** | Light, dark or follow the phone, with 15 colour palettes. Each palette pairs a primary colour with a partner colour for spend bars and the tank level |
-| **Smooth transitions** | Fade + slide page routes, scroll-aware staggered list animations |
+| **Smooth transitions** | Fade + slide page routes, tabs that slide the way you moved, scroll-aware staggered list animations |
 | **Offline-first** | SQLite local database — works without internet |
 
 ## Screenshots
@@ -94,6 +99,8 @@ flutter test tool/readme_screenshots_test.dart --update-goldens
 - **Widgets:** [home_widget](https://pub.dev/packages/home_widget) with Android layouts in `FuelWidgets.kt`
 - **Pictures:** [flutter_svg](https://pub.dev/packages/flutter_svg) for the [OpenMoji](https://openmoji.org) vehicle pictures (CC BY-SA 4.0)
 - **Updates:** [http](https://pub.dev/packages/http) for the GitHub release check and download, a Kotlin `PackageInstaller` bridge for the install, [url_launcher](https://pub.dev/packages/url_launcher) for the release page
+- **App lock:** [local_auth](https://pub.dev/packages/local_auth) for Android's fingerprint, face or PIN prompt
+- **PDF:** [pdf](https://pub.dev/packages/pdf) for the vehicle history, with Roboto bundled for the ₹ sign
 - **Theming:** a `ThemeExtension` (`AppColors`) built from the chosen palette and light or dark mode, so screens never hard-code a colour
 
 ## Project Structure

@@ -116,6 +116,8 @@ ThemeData buildAppTheme(Palette palette, Brightness brightness) {
     ),
     snackBarTheme: const SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
+      // Swiped away sideways; a floating bar otherwise only goes down.
+      dismissDirection: DismissDirection.horizontal,
     ),
     dividerTheme: DividerThemeData(color: c.cardBorder, thickness: 1),
   );

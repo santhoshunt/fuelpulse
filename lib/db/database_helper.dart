@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/attachment.dart';
+import '../models/check.dart';
 import '../models/fuel_log.dart';
 import '../models/paper.dart';
 import '../models/part.dart';
@@ -19,7 +20,7 @@ class DatabaseHelper {
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
 
-  static const int schemaVersion = 6;
+  static const int schemaVersion = 7;
 
   static Database? _database;
 
@@ -82,6 +83,7 @@ class DatabaseHelper {
     await _toV4(db);
     await _toV5(db);
     await _toV6(db);
+    await _toV7(db);
   }
 
   @visibleForTesting
@@ -104,6 +106,22 @@ class DatabaseHelper {
     if (oldVersion < 4) await _toV4(db);
     if (oldVersion < 5) await _toV5(db);
     if (oldVersion < 6) await _toV6(db);
+    if (oldVersion < 7) await _toV7(db);
+  }
+
+  /// Schema 7, additive only: repeating checks you do yourself.
+  static Future<void> _toV7(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE checks (
+        id TEXT PRIMARY KEY,
+        vehicleId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        everyDays INTEGER,
+        everyKm INTEGER,
+        lastDoneAt TEXT NOT NULL,
+        lastDoneKm INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
   }
 
   /// Schema 6, additive only: trips, papers, parts and attachments (bills
@@ -518,6 +536,7 @@ class DatabaseHelper {
         'trips',
         'papers',
         'parts',
+        'checks',
       ]) {
         await txn.delete(table, where: 'vehicleId = ?', whereArgs: [id]);
       }
@@ -556,6 +575,7 @@ class DatabaseHelper {
       'papers',
       'parts',
       'attachments',
+      'checks',
     ]) {
       await txn.delete(table);
     }
@@ -579,11 +599,16 @@ class DatabaseHelper {
     List<Paper> papers = const [],
     List<Part> parts = const [],
     List<Attachment> attachments = const [],
+    List<Check> checks = const [],
   }) async {
     final db = await database;
     await db.transaction((txn) async {
       await _insertAll(txn, trips, papers, parts, attachments,
           ConflictAlgorithm.replace);
+      for (final c in checks) {
+        await txn.insert('checks', c.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
       for (final v in newVehicles) {
         await txn.insert('vehicles', v.toMap(),
             conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -634,12 +659,16 @@ class DatabaseHelper {
     List<Paper> papers = const [],
     List<Part> parts = const [],
     List<Attachment> attachments = const [],
+    List<Check> checks = const [],
   }) async {
     final db = await database;
     await db.transaction((txn) async {
       await _clearAll(txn);
       await _insertAll(txn, trips, papers, parts, attachments,
           ConflictAlgorithm.replace);
+      for (final c in checks) {
+        await txn.insert('checks', c.toMap());
+      }
       for (final p in pumps) {
         await txn.insert('pumps', p.toMap());
       }
@@ -937,6 +966,31 @@ class DatabaseHelper {
   Future<void> deletePart(String id) async {
     final db = await database;
     await db.delete('parts', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Checks
+
+  Future<List<Check>> getChecks(String vehicleId) async {
+    final db = await database;
+    final maps = await db.query('checks',
+        where: 'vehicleId = ?', whereArgs: [vehicleId], orderBy: 'name');
+    return maps.map(Check.fromMap).toList();
+  }
+
+  Future<List<Check>> getEveryCheck() async {
+    final db = await database;
+    return (await db.query('checks')).map(Check.fromMap).toList();
+  }
+
+  Future<void> saveCheck(Check c) async {
+    final db = await database;
+    await db.insert('checks', c.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteCheck(String id) async {
+    final db = await database;
+    await db.delete('checks', where: 'id = ?', whereArgs: [id]);
   }
 
   // Attachments

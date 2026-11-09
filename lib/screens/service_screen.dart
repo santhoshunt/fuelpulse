@@ -14,6 +14,7 @@ import '../utils/odometer_reading.dart';
 import '../utils/page_routes.dart';
 import '../utils/service_schedule.dart';
 import '../utils/vehicle_manager.dart';
+import 'checks_card.dart';
 import 'service_form_screen.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
@@ -155,6 +156,8 @@ class _ServiceScreenState extends State<ServiceScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
+                  if (_vehicle != null)
+                    ChecksCard(vehicleId: _vehicle!.id, odometer: _odometer),
                   if (_services.isEmpty)
                     _empty(colors)
                   else ...[

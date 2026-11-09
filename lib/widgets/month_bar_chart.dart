@@ -40,13 +40,20 @@ class _MonthBarChartState extends State<MonthBarChart> {
     if (i != _picked) setState(() => _picked = i);
   }
 
+  void _clear() {
+    if (_picked != null) setState(() => _picked = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final bars = widget.bars;
     final top = bars.isEmpty ? 0.0 : bars.map((b) => b.$2).reduce(math.max);
     final label = TextStyle(color: colors.textSecondary, fontSize: 11);
-    return LayoutBuilder(
+    return TapRegion(
+      // A touch anywhere else puts the reading away.
+      onTapOutside: (_) => _clear(),
+      child: LayoutBuilder(
       builder: (context, box) => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (d) => _pick(d.localPosition.dx, box.maxWidth),
@@ -149,6 +156,7 @@ class _MonthBarChartState extends State<MonthBarChart> {
           ],
         ),
       ),
+    ),
     );
   }
 }

@@ -67,6 +67,10 @@ class _TrendChartState extends State<TrendChart> {
     if (best != _picked) setState(() => _picked = best);
   }
 
+  void _clear() {
+    if (_picked != null) setState(() => _picked = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
@@ -84,7 +88,10 @@ class _TrendChartState extends State<TrendChart> {
         ? null
         : points.map((p) => p.y).reduce((a, b) => a + b) / points.length;
 
-    return Card(
+    return TapRegion(
+      // A touch anywhere else puts the reading away.
+      onTapOutside: (_) => _clear(),
+      child: Card(
       margin: EdgeInsets.zero,
       child: Padding(
       padding: const EdgeInsets.all(16),
@@ -156,6 +163,7 @@ class _TrendChartState extends State<TrendChart> {
         ],
       ),
       ),
+    ),
     );
   }
 }

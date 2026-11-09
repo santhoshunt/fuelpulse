@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
+import '../services/app_lock.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../utils/appearance_prefs.dart';
@@ -41,6 +42,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _typeCount = 0;
   int _alertPercent = kMileageAlertDefault;
   int _lowFuelKm = kLowFuelKmDefault;
+  String _readingReminder = kReadingReminderDefault;
+  bool _lockOn = false;
+  int _lockAfter = kAppLockAfterDefault;
 
   @override
   void initState() {
@@ -55,6 +59,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final alert = prefs.getInt(kMileageAlertKey) ?? kMileageAlertDefault;
     final lowFuel = prefs.getInt(kLowFuelKmKey) ?? kLowFuelKmDefault;
+    final reading =
+        prefs.getString(kReadingReminderKey) ?? kReadingReminderDefault;
     final types = await db.getServiceTypes();
     if (!mounted) return;
     setState(() {
@@ -63,6 +69,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _typeCount = types.length;
       _alertPercent = alert;
       _lowFuelKm = lowFuel;
+      _readingReminder = reading;
+      _lockOn = prefs.getBool(kAppLockKey) ?? false;
+      _lockAfter = prefs.getInt(kAppLockAfterKey) ?? kAppLockAfterDefault;
     });
   }
 
@@ -83,6 +92,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(kMileageAlertKey, r.value);
     if (mounted) setState(() => _alertPercent = r.value);
+  }
+
+  /// Turning the lock on asks to unlock once, so a phone without a
+  /// working fingerprint or PIN can't lock you out.
+  Future<void> _toggleLock(bool on) async {
+    if (on) {
+      if (!await canLock()) {
+        if (mounted) {
+          showSettingsSnack(
+              context, 'Set a screen lock on your phone first.');
+        }
+        return;
+      }
+      if (!await authenticate('Turn on app lock')) return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kAppLockKey, on);
+    if (mounted) setState(() => _lockOn = on);
+  }
+
+  String get _lockAfterLabel => switch (_lockAfter) {
+        0 => 'Immediately',
+        60 => 'After 1 minute',
+        _ => 'After ${_lockAfter ~/ 60} minutes',
+      };
+
+  Future<void> _pickLockAfter() async {
+    final r = await showOptionPicker<int>(
+      context: context,
+      title: 'Lock again',
+      options: const [
+        PickerOption(value: 0, label: 'Immediately'),
+        PickerOption(value: 60, label: 'After 1 minute away'),
+        PickerOption(value: 300, label: 'After 5 minutes away'),
+      ],
+      selected: _lockAfter,
+    );
+    if (r is! PickerPicked<int>) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(kAppLockAfterKey, r.value);
+    if (mounted) setState(() => _lockAfter = r.value);
+  }
+
+  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday',
+      'Friday', 'Saturday', 'Sunday'];
+
+  /// 'Sun 19:00', or 'Off'.
+  String get _readingLabel {
+    final parts = _readingReminder.split('|');
+    final day = parts.length == 2 ? int.tryParse(parts[0]) : null;
+    if (day == null || day < 1 || day > 7) return 'Off';
+    return '${_days[day - 1].substring(0, 3)} ${parts[1]}';
+  }
+
+  /// A day of the week and a time, or Off, for the reading reminder.
+  Future<void> _pickReadingReminder() async {
+    final r = await showOptionPicker<int>(
+      context: context,
+      title: 'Odometer reading reminder',
+      options: [
+        const PickerOption(value: 0, label: 'Off'),
+        for (var d = 1; d <= 7; d++)
+          PickerOption(value: d, label: 'Every ${_days[d - 1]}'),
+      ],
+      selected: int.tryParse(_readingReminder.split('|').first) ?? 0,
+    );
+    if (r is! PickerPicked<int> || !mounted) return;
+    var setting = 'off';
+    if (r.value != 0) {
+      final hm = _readingReminder.contains('|')
+          ? _readingReminder.split('|')[1].split(':')
+          : const ['19', '00'];
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(
+            hour: int.tryParse(hm[0]) ?? 19,
+            minute: int.tryParse(hm.length > 1 ? hm[1] : '0') ?? 0),
+      );
+      if (time == null) return;
+      setting = '${r.value}|${time.hour.toString().padLeft(2, '0')}:'
+          '${time.minute.toString().padLeft(2, '0')}';
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kReadingReminderKey, setting);
+    if (mounted) setState(() => _readingReminder = setting);
+    await ServiceReminders.instance.rescheduleAll(ask: setting != 'off');
   }
 
   /// The range left at which an odometer reading warns of low fuel; 0 is
@@ -234,6 +329,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: _pickLowFuel,
               ),
             ]),
+            const SizedBox(height: 32),
+            sectionHeader('Reminders'),
+            const SizedBox(height: 12),
+            settingsGroup([
+              SettingsRow(
+                icon: Icons.event_repeat,
+                label: 'Odometer reading reminder',
+                trailing: Text(_readingLabel, style: value),
+                onTap: _pickReadingReminder,
+              ),
+            ]),
+            if (appLockSupported) ...[
+              const SizedBox(height: 32),
+              sectionHeader('Security'),
+              const SizedBox(height: 12),
+              settingsGroup([
+                SettingsRow(
+                  icon: Icons.lock_outline,
+                  label: 'App lock',
+                  trailing: Switch(value: _lockOn, onChanged: _toggleLock),
+                  onTap: () => _toggleLock(!_lockOn),
+                ),
+                if (_lockOn)
+                  SettingsRow(
+                    icon: Icons.timer_outlined,
+                    label: 'Lock again',
+                    trailing: Text(_lockAfterLabel, style: value),
+                    onTap: _pickLockAfter,
+                  ),
+              ]),
+            ],
             const SizedBox(height: 32),
             sectionHeader('Data'),
             const SizedBox(height: 12),

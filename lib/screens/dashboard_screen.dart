@@ -60,6 +60,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// The last closed tank, when it came in far enough below average to
   /// flag and wasn't dismissed.
   SegmentTrendPoint? _drop;
+
+  /// Partial fill-ups since the last full one, newest backwards.
+  int _partialRun = 0;
   bool _loading = true;
 
   @override
@@ -120,6 +123,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _cost = calculateCostStats(chrono);
       _trend = trend;
       _drop = drop;
+      _partialRun = chrono.reversed.takeWhile((l) => !l.fullTank).length;
       _trip = trip;
       _odometer = odo;
       _tripSpend = trip == null
@@ -243,6 +247,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (_drop != null) ...[
         const SizedBox(height: 14),
         _dropCard(_drop!, colors),
+      ],
+      if (_partialRun >= 3) ...[
+        const SizedBox(height: 14),
+        _fillFullCard(colors),
       ],
       const SizedBox(height: 14),
       GaugeCard(
@@ -463,6 +471,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// After 3 or more partial fill-ups in a row: mileage can't be measured
+  /// until a full tank, so say so before the next visit to the pump.
+  Widget _fillFullCard(AppColors colors) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: ColoredBox(
+        color: colors.card,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 4, color: colors.warning),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.local_gas_station, color: colors.warning),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Fill up full next time',
+                                style: TextStyle(
+                                    color: colors.textPrimary,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600)),
+                            Text(
+                                '$_partialRun partial fill-ups in a row. Mileage '
+                                'and trip fuel need a full tank to measure.',
+                                style: TextStyle(
+                                    color: colors.textSecondary, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

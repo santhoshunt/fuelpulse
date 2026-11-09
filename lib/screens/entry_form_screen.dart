@@ -754,6 +754,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       }
       await ServiceReminders.instance
           .checkKmDue(_original?.vehicleId ?? widget.vehicleId!, odometer);
+      // A fill-up is a reading too: move the weekly reading reminder.
+      await ServiceReminders.instance.rescheduleAll();
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       debugPrint('Error saving entry: $e');

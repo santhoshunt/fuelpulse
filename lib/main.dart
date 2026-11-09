@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'screens/app_shell.dart';
+import 'services/app_lock.dart';
 import 'theme/app_theme.dart';
 import 'utils/appearance_prefs.dart';
 import 'utils/custom_pictures.dart';
@@ -40,11 +41,22 @@ Future<void> main() async {
     debugPrint('Pictures folder failed: $e');
   }
 
-  runApp(const FuelPulseApp());
+  // Read before the first frame, so a locked app never shows its data.
+  var locked = false;
+  try {
+    locked = await appLockEnabled();
+  } catch (e) {
+    debugPrint('App lock check failed: $e');
+  }
+
+  runApp(FuelPulseApp(locked: locked));
 }
 
 class FuelPulseApp extends StatelessWidget {
-  const FuelPulseApp({super.key});
+  /// App lock is on, so the app opens behind the lock screen.
+  final bool locked;
+
+  const FuelPulseApp({super.key, this.locked = false});
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +69,8 @@ class FuelPulseApp extends StatelessWidget {
         darkTheme: buildAppTheme(a.palette, Brightness.dark),
         themeMode: a.mode,
         home: const AppShell(),
+        builder: (context, child) => AppLockGate(
+            initiallyLocked: locked, child: child ?? const SizedBox.shrink()),
       ),
     );
   }

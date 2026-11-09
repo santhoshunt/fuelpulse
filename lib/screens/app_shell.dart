@@ -42,12 +42,15 @@ class _AppShellState extends State<AppShell>
   final _reload = ValueNotifier<int>(0);
   int _tab = 0;
 
-  /// Runs once per tab switch: the new tab fades in while rising a few
-  /// pixels into place.
+  /// Runs once per tab switch, as a fade-through on a shared axis: the old
+  /// tab drifts towards the side you left and fades out, then the new one
+  /// drifts in from the side you moved towards as it fades in.
   late final _tabIn = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 220), value: 1);
-  late final _tabCurve =
-      CurvedAnimation(parent: _tabIn, curve: Curves.easeOutCubic);
+      vsync: this, duration: const Duration(milliseconds: 300), value: 1);
+
+  /// The tab being left, and 1 when the new one is to its right, else -1.
+  int _from = 0;
+  int _dir = 1;
 
   /// The Garage tab's list: 0 Service, 1 Trips, 2 Papers.
   final _garageSection = ValueNotifier<int>(0);
@@ -254,6 +257,8 @@ class _AppShellState extends State<AppShell>
 
   void _select(int i) {
     if (i == _tab) return;
+    _from = _tab;
+    _dir = i > _tab ? 1 : -1;
     setState(() => _tab = i);
     _tabIn.forward(from: 0);
     // The tab coming into view may show data another tab just changed.
@@ -266,23 +271,40 @@ class _AppShellState extends State<AppShell>
       body: Column(
         children: [
           Expanded(
-            child: FadeTransition(
-              opacity: _tabCurve,
-              child: SlideTransition(
-                position: Tween(
-                        begin: const Offset(0, 0.012), end: Offset.zero)
-                    .animate(_tabCurve),
-                child: IndexedStack(
-              index: _tab,
-              children: [
-                DashboardScreen(reload: _reload),
-                FuelListScreen(reload: _reload),
-                GarageScreen(reload: _reload, section: _garageSection),
-                AnalyticsScreen(reload: _reload),
-                const SettingsScreen(),
-              ],
-            ),
-              ),
+            child: AnimatedBuilder(
+              animation: _tabIn,
+              builder: (context, _) {
+                // The first 30% takes the old tab out; the rest brings the
+                // new one in. The stack swaps tabs at the split, so a tab
+                // keeps its state and only one shows at a time.
+                const split = 0.3;
+                final t = _tabIn.value;
+                final leaving = t < split;
+                final p = leaving ? t / split : (t - split) / (1 - split);
+                final opacity = leaving
+                    ? 1 - Curves.easeIn.transform(p)
+                    : Curves.easeOut.transform(p);
+                final dx = leaving
+                    ? -_dir * 30 * Curves.easeIn.transform(p)
+                    : _dir * 30 * (1 - Curves.easeOutCubic.transform(p));
+                return Opacity(
+                  opacity: opacity.clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(dx, 0),
+                    child: IndexedStack(
+                      index: leaving ? _from : _tab,
+                      children: [
+                        DashboardScreen(reload: _reload),
+                        FuelListScreen(reload: _reload),
+                        GarageScreen(
+                            reload: _reload, section: _garageSection),
+                        AnalyticsScreen(reload: _reload),
+                        const SettingsScreen(),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
           const UpdateBanner(),

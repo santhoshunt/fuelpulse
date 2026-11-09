@@ -5,7 +5,6 @@ import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
 import '../models/trip.dart';
 import '../models/vehicle.dart';
-import '../services/photo_scan.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../utils/mileage_bands.dart' show bandColor;
@@ -95,7 +94,7 @@ class _StartSheetState extends State<_StartSheet> {
   }
 
   Future<void> _scan() async {
-    final v = await scanOdometer(widget.odometer);
+    final v = await pickOdometerPhoto(context, widget.odometer);
     if (!mounted) return;
     if (v == null) {
       setState(() => _error = "Couldn't read the odometer; type it in");
@@ -374,7 +373,7 @@ class _EndSheetState extends State<_EndSheet> {
                       icon: Icon(Icons.photo_camera_outlined,
                           color: colors.primary),
                       onPressed: () async {
-                        final v = await scanOdometer(widget.odometer);
+                        final v = await pickOdometerPhoto(context, widget.odometer);
                         if (v != null && mounted) {
                           setState(() => _odo.text = '$v');
                         }

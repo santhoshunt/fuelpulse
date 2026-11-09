@@ -2,12 +2,13 @@ package com.fabletest.fuelpulse
 
 import android.content.Intent
 import android.net.Uri
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
-class MainActivity : FlutterActivity() {
+// A FragmentActivity: the app lock's fingerprint prompt (local_auth) needs one.
+class MainActivity : FlutterFragmentActivity() {
     companion object {
         private const val UPDATE_CHANNEL = "fuelpulse/update"
         private const val FILES_CHANNEL = "fuelpulse/files"

@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
 import '../models/attachment.dart';
+import '../models/check.dart';
 import '../models/fuel_log.dart';
 import '../models/paper.dart';
 import '../models/part.dart';
@@ -45,6 +46,7 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   final papers = await db.getEveryPaper();
   final parts = await db.getEveryPart();
   final attachments = await db.getEveryAttachment();
+  final checks = await db.getEveryCheck();
   final logos = brandLogos.value;
   final pictures = await picturesForBackup([
     ...logos.values,
@@ -70,6 +72,8 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     'papers': papers.map((p) => p.toMap()).toList(),
     'parts': parts.map((p) => p.toMap()).toList(),
     'attachments': attachments.map((a) => a.toMap()).toList(),
+    // From v4.2.0; older apps ignore it, so the format number stays 5.
+    'checks': checks.map((c) => c.toMap()).toList(),
     // The two flat lists v2.x read; a format 4 file restores from the map.
     'brandGrades': brandGrades,
     // From v3.2.0: your logos and vehicle pictures, as base64 PNGs.
@@ -158,6 +162,7 @@ Future<int> restoreBackup(Map<String, dynamic> data,
   var parts = list('parts', Part.fromMap) ?? const <Part>[];
   var attachments =
       list('attachments', Attachment.fromMap) ?? const <Attachment>[];
+  var checks = list('checks', Check.fromMap) ?? const <Check>[];
 
   final db = DatabaseHelper();
   final settings = data['settings'] is Map ? data['settings'] as Map : null;
@@ -183,6 +188,7 @@ Future<int> restoreBackup(Map<String, dynamic> data,
     trips = [for (final t in trips) if (kept.contains(t.vehicleId)) t];
     papers = [for (final p in papers) if (kept.contains(p.vehicleId)) p];
     parts = [for (final p in parts) if (kept.contains(p.vehicleId)) p];
+    checks = [for (final c in checks) if (kept.contains(c.vehicleId)) c];
     attachments = _attachmentsOf(attachments, logs, services, papers);
     await db.replaceAllData(vehicles, logs,
         pumps: pumps,
@@ -192,7 +198,8 @@ Future<int> restoreBackup(Map<String, dynamic> data,
         trips: trips,
         papers: papers,
         parts: parts,
-        attachments: attachments);
+        attachments: attachments,
+        checks: checks);
 
     final prefs = await SharedPreferences.getInstance();
     // Pre-vehicle tank capacity belongs to the default vehicle now.
@@ -259,6 +266,7 @@ Future<int> restoreBackup(Map<String, dynamic> data,
     trips = [for (final t in trips) if (known.contains(t.vehicleId)) t];
     papers = [for (final p in papers) if (known.contains(p.vehicleId)) p];
     parts = [for (final p in parts) if (known.contains(p.vehicleId)) p];
+    checks = [for (final c in checks) if (known.contains(c.vehicleId)) c];
     attachments = _attachmentsOf(attachments, logs, services, papers);
     // Logs sent to the default vehicle need it to exist, even if the user
     // deleted it in favour of others. One transaction, so a failure adds
@@ -273,7 +281,8 @@ Future<int> restoreBackup(Map<String, dynamic> data,
         trips: trips,
         papers: papers,
         parts: parts,
-        attachments: attachments);
+        attachments: attachments,
+        checks: checks);
   }
 
   await ServiceReminders.instance.rescheduleAll();

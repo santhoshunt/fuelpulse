@@ -40,12 +40,19 @@ class _MonthLineChartState extends State<MonthLineChart> {
     if (i != _picked) setState(() => _picked = i);
   }
 
+  void _clear() {
+    if (_picked != null) setState(() => _picked = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final pts = widget.points;
     if (pts.isEmpty) return const SizedBox.shrink();
-    return LayoutBuilder(
+    return TapRegion(
+      // A touch anywhere else puts the reading away.
+      onTapOutside: (_) => _clear(),
+      child: LayoutBuilder(
       builder: (context, box) => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (d) => _pick(d.localPosition.dx, box.maxWidth),
@@ -70,6 +77,7 @@ class _MonthLineChartState extends State<MonthLineChart> {
           ),
         ),
       ),
+    ),
     );
   }
 }
