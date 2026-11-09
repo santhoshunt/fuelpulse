@@ -2,12 +2,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat, NumberFormat;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
 import '../models/service_type.dart';
+import '../models/trip.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
+import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/odometer_reading.dart';
@@ -15,13 +18,17 @@ import '../utils/page_routes.dart';
 import '../utils/service_schedule.dart';
 import '../utils/tank_level_calculator.dart';
 import '../utils/trend_calculator.dart';
+import '../utils/trip_calculator.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/gauge_card.dart';
 import '../widgets/trend_chart.dart';
 import '../widgets/vehicle_icon.dart';
 import '../widgets/vehicle_picker.dart' show showVehiclePicker;
 import 'entry_form_screen.dart';
+import 'refill_detail_screen.dart';
 import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
+import 'trip_screen.dart';
+import 'trip_sheets.dart';
 
 /// The Dashboard tab: the active vehicle's gauge card, spend tiles and the
 /// mileage of its last 12 full-tank segments.
@@ -46,6 +53,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   NextService? _next;
   OdometerReading? _reading;
   Map<String, ServiceType> _types = const {};
+  Trip? _trip;
+  int? _odometer;
+  double? _tripSpend;
+
+  /// The last closed tank, when it came in far enough below average to
+  /// flag and wasn't dismissed.
+  SegmentTrendPoint? _drop;
   bool _loading = true;
 
   @override
@@ -80,15 +94,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final services = await _db.getServices(vehicle.id);
     final reading = await loadReading(vehicle.id);
     final types = await _db.getServiceTypes();
-    final next = nextServiceFor(services, await latestOdometer(vehicle.id));
+    final odo = await latestOdometer(vehicle.id);
+    final next = nextServiceFor(services, odo);
+    final trip = await _db.activeTrip(vehicle.id);
+    final avg = overall.totalLiters > 0 ? overall.overallEfficiency : null;
+    final trend = calculateSegmentTrend(chrono);
+    final prefs = await SharedPreferences.getInstance();
+    final pct = prefs.getInt(kMileageAlertKey) ?? kMileageAlertDefault;
+    final dismissed = prefs.getString(mileageAlertDismissedKey(vehicle.id));
+    final lastTank = trend.lastOrNull;
+    final drop = pct > 0 &&
+            avg != null &&
+            trend.length >= 3 &&
+            lastTank != null &&
+            lastTank.kmPerLitre < avg * (1 - pct / 100) &&
+            dismissed != lastTank.closedAt.toIso8601String()
+        ? lastTank
+        : null;
     if (!mounted) return;
     setState(() {
       _vehicle = vehicle;
       _chrono = chrono;
       _eff = eff;
-      _average = overall.totalLiters > 0 ? overall.overallEfficiency : null;
+      _average = avg;
       _cost = calculateCostStats(chrono);
-      _trend = calculateSegmentTrend(chrono);
+      _trend = trend;
+      _drop = drop;
+      _trip = trip;
+      _odometer = odo;
+      _tripSpend = trip == null
+          ? null
+          : tripFuel(trip, chrono,
+                  endOdometer: odo ?? trip.startOdometer, averageKmL: avg)
+              ?.cost;
       _tankLevel = chrono.isEmpty ? null : levels[chrono.last.id];
       _next = next;
       _reading = reading;
@@ -198,6 +236,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return [
       _header(colors),
+      if (_trip != null) ...[
+        const SizedBox(height: 14),
+        _tripCard(_trip!, colors),
+      ],
+      if (_drop != null) ...[
+        const SizedBox(height: 14),
+        _dropCard(_drop!, colors),
+      ],
       const SizedBox(height: 14),
       GaugeCard(
         averageKmL: _average,
@@ -212,6 +258,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         tankCapacity: _vehicle?.tankCapacity,
         emptyMessage: _chrono.isEmpty ? 'Add your first fill-up' : null,
       ),
+      if (_vehicle?.monthlyBudget != null && _cost != null) ...[
+        const SizedBox(height: 14),
+        _budgetCard(_vehicle!.monthlyBudget!, _cost!.monthSpend, colors),
+      ],
       if (_next != null) ...[
         const SizedBox(height: 14),
         _nextService(_next!, colors),
@@ -239,6 +289,254 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
   }
 
+  Widget _cap(String s, AppColors colors) => Text(s.toUpperCase(),
+      style: TextStyle(
+          color: colors.textSecondary,
+          fontSize: 11,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w600));
+
+  /// The trip on now, with its km and spend so far.
+  Widget _tripCard(Trip t, AppColors colors) {
+    final since = DateTime.tryParse(t.startAt);
+    final km = ((_odometer ?? t.startOdometer) - t.startOdometer).clamp(0, 1 << 30);
+    return Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.secondary),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: () async {
+                await Navigator.push(context,
+                    SmoothPageRoute(page: TripScreen(tripId: t.id)));
+                widget.reload.value++;
+              },
+              child: Row(
+                children: [
+                  Icon(Icons.route, color: colors.secondary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('On a trip · ${t.name}',
+                            style: TextStyle(
+                                color: colors.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600)),
+                        Text(
+                            [
+                              if (since != null)
+                                'Since ${DateFormat('E HH:mm').format(since)}',
+                              '${_rupees.format(km)} km so far',
+                              if (_tripSpend != null)
+                                '₹${_rupees.format(_tripSpend)} spent',
+                            ].join(' · '),
+                            style: TextStyle(
+                                color: colors.textSecondary, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await _updateReading();
+                      await refreshTripNotification(t.vehicleId);
+                    },
+                    child: const Text('Update odometer'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      final v = _vehicle;
+                      if (v == null) return;
+                      if (await showEndTripSheet(context, t, v)) {
+                        widget.reload.value++;
+                      }
+                    },
+                    child: const Text('End trip'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The last tank came in well below average: say so, with what to check.
+  Widget _dropCard(SegmentTrendPoint p, AppColors colors) {
+    final avg = _average!;
+    final pct = ((1 - p.kmPerLitre / avg) * 100).round();
+    final checks = _vehicle?.type == VehicleType.bike
+        ? 'tyre pressure, chain slack and the air filter'
+        : 'tyre pressure, wheel alignment and the air filter';
+    final closing = _chrono
+        .where((l) => DateTime.tryParse(l.timestamp) == p.closedAt)
+        .firstOrNull;
+    // A rounded card with a warning bar down its left edge. Flutter can't
+    // round a border that differs per side, so the bar is its own strip.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: ColoredBox(
+        color: colors.card,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 4, color: colors.warning),
+              Expanded(child: _dropBody(p, pct, avg, checks, closing, colors)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dropBody(SegmentTrendPoint p, int pct, double avg, String checks,
+      FuelLog? closing, AppColors colors) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 8, 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.trending_down, color: colors.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Mileage dropped',
+                    style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600)),
+                Text(
+                    'Last tank ${p.kmPerLitre.toStringAsFixed(1)} km/L, $pct% '
+                    'below your ${avg.toStringAsFixed(1)}. Worth checking '
+                    '$checks.',
+                    style:
+                        TextStyle(color: colors.textSecondary, fontSize: 13)),
+                Row(
+                  children: [
+                    if (closing != null)
+                      TextButton(
+                        onPressed: () async {
+                          await Navigator.push(
+                              context,
+                              SmoothPageRoute(
+                                  page: RefillDetailScreen(logId: closing.id)));
+                          widget.reload.value++;
+                        },
+                        child: const Text('See the fill-up'),
+                      ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () async {
+                        final v = _vehicle;
+                        if (v == null) return;
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString(mileageAlertDismissedKey(v.id),
+                            p.closedAt.toIso8601String());
+                        if (mounted) setState(() => _drop = null);
+                      },
+                      child: const Text('Dismiss'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// This month's fuel spend against the vehicle's budget.
+  Widget _budgetCard(double budget, double spent, AppColors colors) {
+    final now = DateTime.now();
+    final daysLeft = DateTime(now.year, now.month + 1, 0).day - now.day + 1;
+    final left = budget - spent;
+    final over = left < 0;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                    child: _cap(
+                        'Fuel budget · ${DateFormat('MMMM').format(now)}',
+                        colors)),
+                Text('$daysLeft ${daysLeft == 1 ? 'day' : 'days'} left',
+                    style:
+                        TextStyle(color: colors.textSecondary, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Expanded(
+                  child: Text('₹${_rupees.format(spent)}',
+                      style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700)),
+                ),
+                Text('of ₹${_rupees.format(budget)}',
+                    style:
+                        TextStyle(color: colors.textSecondary, fontSize: 13)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: (spent / budget).clamp(0.0, 1.0),
+                minHeight: 6,
+                color: over
+                    ? colors.danger
+                    : spent / budget > 0.85
+                        ? colors.warning
+                        : colors.primary,
+                backgroundColor: colors.cardBorder,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+                over
+                    ? '₹${_rupees.format(-left)} over budget'
+                    : '₹${_rupees.format(left)} left · about '
+                        '₹${_rupees.format(left / daysLeft)} a day',
+                style: TextStyle(
+                    color: over ? colors.danger : colors.textSecondary,
+                    fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// The app name, and on the right the active vehicle as a pill that opens
   /// the vehicle picker.
   Widget _header(AppColors colors) {
@@ -246,7 +544,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Row(
       children: [
         Expanded(
-          child: Text('FuelPulse',
+          child: Text("My H'ness",
               style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 26,

@@ -51,7 +51,7 @@ class FuelPulseApp extends StatelessWidget {
     return ValueListenableBuilder<Appearance>(
       valueListenable: appearance,
       builder: (context, a, _) => MaterialApp(
-        title: 'FuelPulse',
+        title: "My H'ness",
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(a.palette, Brightness.light),
         darkTheme: buildAppTheme(a.palette, Brightness.dark),

@@ -5,11 +5,13 @@ import '../theme/app_colors.dart';
 import '../utils/custom_pictures.dart';
 import '../widgets/vehicle_icon.dart';
 import '../widgets/vehicle_picker.dart' show vehicleIcon, vehicleTypeLabel;
+import 'part_form_screen.dart';
 import 'settings/settings_widgets.dart';
 
 /// Add ([initial] null) or edit a vehicle: name, make and model, type and
-/// tank size. Its grading ranges are under Settings → Grading. Save returns the vehicle; saving it is the
-/// caller's. [onDelete] (edit only) deletes after its own confirmation and
+/// tank size, monthly fuel budget, and (edit only) its tyres and battery.
+/// Its grading ranges are under Settings → Grading. Save returns the
+/// vehicle; saving it is the caller's. Tyres and battery save on their own. [onDelete] (edit only) deletes after its own confirmation and
 /// says whether it did.
 class VehicleEditScreen extends StatefulWidget {
   final Vehicle? initial;
@@ -33,6 +35,8 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
       TextEditingController(text: widget.initial?.model ?? '');
   late final _cap = TextEditingController(
       text: widget.initial?.tankCapacity?.toString() ?? '');
+  late final _budget = TextEditingController(
+      text: widget.initial?.monthlyBudget?.toStringAsFixed(0) ?? '');
   late VehicleType _type = widget.initial?.type ?? VehicleType.car;
 
   /// A picture name, `file:NAME` for your own, or null for the default.
@@ -40,12 +44,14 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
 
   String? _nameError;
   String? _capError;
+  String? _budgetError;
 
   @override
   void dispose() {
     _name.dispose();
     _model.dispose();
     _cap.dispose();
+    _budget.dispose();
     super.dispose();
   }
 
@@ -53,13 +59,21 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
     final name = _name.text.trim();
     final capText = _cap.text.trim();
     final cap = capText.isEmpty ? null : double.tryParse(capText);
+    final budgetText = _budget.text.trim();
+    final budget = budgetText.isEmpty ? null : double.tryParse(budgetText);
     setState(() {
       _nameError = name.isEmpty ? 'Enter a name' : null;
       _capError = capText.isNotEmpty && (cap == null || cap < 0)
           ? 'Enter litres, or leave empty'
           : null;
+      _budgetError = budgetText.isNotEmpty && (budget == null || budget < 0)
+          ? 'Enter rupees, or leave empty'
+          : null;
     });
-    if (_nameError != null || _capError != null) return;
+    if (_nameError != null || _capError != null || _budgetError != null) {
+      return;
+    }
+    final perMonth = budget != null && budget > 0 ? budget : null;
     final tank = cap != null && cap > 0 ? cap : null;
     final initial = widget.initial;
     Navigator.pop(
@@ -72,6 +86,7 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
               model: _model.text.trim(),
               icon: _icon,
               tankCapacity: tank,
+              monthlyBudget: perMonth,
               sortOrder: widget.nextSortOrder,
               createdAt: DateTime.now().toIso8601String(),
             )
@@ -83,6 +98,8 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
               clearIcon: _icon == null,
               tankCapacity: tank,
               clearTankCapacity: tank == null,
+              monthlyBudget: perMonth,
+              clearMonthlyBudget: perMonth == null,
             ),
     );
   }
@@ -189,6 +206,28 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
             child: Text('Leave empty to hide the tank estimate.', style: note),
           ),
           const SizedBox(height: 24),
+          sectionHeader('Budget'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _budget,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Monthly fuel budget (optional)',
+              prefixText: '₹ ',
+              errorText: _budgetError,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: Text('Shows how much is left this month on the Dashboard.',
+                style: note),
+          ),
+          if (widget.initial != null) ...[
+            const SizedBox(height: 24),
+            sectionHeader('Tyres and battery'),
+            const SizedBox(height: 12),
+            PartsSection(vehicleId: widget.initial!.id),
+          ],
           const SizedBox(height: 28),
           SizedBox(
             height: 52,

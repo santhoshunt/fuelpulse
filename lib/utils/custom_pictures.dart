@@ -89,6 +89,25 @@ Future<String?> pickSquarePicture(String prefix) async {
   return name;
 }
 
+/// Deletes files from the pictures folder, ignoring any already gone.
+Future<void> deletePictureFiles(Iterable<String> names) async {
+  if (picturesPath.isEmpty) return;
+  for (final n in names) {
+    try {
+      final f = pictureFile(n);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+}
+
+/// Copies a picked photo or PDF into the pictures folder as
+/// `bill_<millis>.<ext>`. Returns the new file name.
+Future<String> importBillFile(String sourcePath, {required bool pdf}) async {
+  final name = 'bill_${DateTime.now().millisecondsSinceEpoch}.${pdf ? 'pdf' : 'jpg'}';
+  await File(sourcePath).copy(pictureFile(name).path);
+  return name;
+}
+
 /// Every picture in use, as base64, for a backup.
 Future<Map<String, String>> picturesForBackup(Iterable<String> names) async {
   final out = <String, String>{};

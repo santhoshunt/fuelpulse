@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 
 import '../db/database_helper.dart';
+import '../models/attachment.dart';
 import '../models/service_record.dart';
 import '../models/service_type.dart';
 import '../models/workshop.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
+import '../widgets/bills_section.dart';
+import '../utils/custom_pictures.dart';
 import '../widgets/option_picker.dart';
 import 'service_types_screen.dart';
 import 'settings/settings_widgets.dart';
@@ -55,6 +58,11 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
   String? _workshopId;
   List<Workshop> _workshops = const [];
   List<ServiceType> _allTypes = const [];
+  List<Attachment> _bills = const [];
+  List<Attachment> _billsBefore = const [];
+
+  /// Set once saved, so closing the form keeps the bills it added.
+  bool _saved = false;
   late bool _schedule = _r == null || _r.nextDueKm != null || _r.nextDueDate != null;
 
   /// Set once the intervals are typed by hand: type changes then leave them.
@@ -83,16 +91,21 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     for (final c in [_odo, _cost, _notes, _everyKm, _everyMonths]) {
       c.dispose();
     }
+    if (!_saved) discardBills(_bills, _billsBefore);
     super.dispose();
   }
 
   Future<void> _load() async {
     final ws = await _db.getWorkshops();
     final types = await _db.getServiceTypes();
+    final bills = _r == null
+        ? const <Attachment>[]
+        : await _db.getAttachments('service', _r.id);
     if (!mounted) return;
     setState(() {
       _workshops = ws;
       _allTypes = types;
+      _bills = _billsBefore = bills;
       _prefillIntervals();
     });
   }
@@ -203,6 +216,8 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     } else {
       await _db.updateService(record);
     }
+    await saveBills(record.id, _bills, _billsBefore);
+    _saved = true;
     // The first schedule, by km or date, asks for the notification
     // permission: a km reminder needs it as much as a dated one.
     await ServiceReminders.instance.rescheduleAll(
@@ -231,7 +246,7 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       ),
     );
     if (ok != true) return;
-    await _db.deleteService(_r!.id);
+    await deletePictureFiles(await _db.deleteService(_r!.id));
     await ServiceReminders.instance.rescheduleAll();
     if (mounted) Navigator.pop(context, true);
   }
@@ -320,6 +335,14 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
                 final n = double.tryParse(s);
                 return n == null || n < 0 ? 'Invalid' : null;
               },
+            ),
+            const SizedBox(height: 24),
+            sectionHeader('Bills (optional)'),
+            const SizedBox(height: 12),
+            BillsSection(
+              ownerType: 'service',
+              items: _bills,
+              onChanged: (l) => setState(() => _bills = l),
             ),
             const SizedBox(height: 24),
             sectionHeader('Next service'),

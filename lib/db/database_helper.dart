@@ -3,10 +3,14 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../models/attachment.dart';
 import '../models/fuel_log.dart';
+import '../models/paper.dart';
+import '../models/part.dart';
 import '../models/pump.dart';
 import '../models/service_record.dart';
 import '../models/service_type.dart';
+import '../models/trip.dart';
 import '../models/vehicle.dart';
 import '../models/workshop.dart';
 
@@ -15,7 +19,7 @@ class DatabaseHelper {
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
 
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 6;
 
   static Database? _database;
 
@@ -77,6 +81,7 @@ class DatabaseHelper {
     await db.execute(_createVehicleIndex);
     await _toV4(db);
     await _toV5(db);
+    await _toV6(db);
   }
 
   @visibleForTesting
@@ -98,6 +103,69 @@ class DatabaseHelper {
     }
     if (oldVersion < 4) await _toV4(db);
     if (oldVersion < 5) await _toV5(db);
+    if (oldVersion < 6) await _toV6(db);
+  }
+
+  /// Schema 6, additive only: trips, papers, parts and attachments (bills
+  /// and document photos); a trip id on each log; a monthly fuel budget on
+  /// each vehicle.
+  static Future<void> _toV6(DatabaseExecutor db) async {
+    await db.execute('ALTER TABLE fuel_logs ADD COLUMN tripId TEXT');
+    await db.execute('ALTER TABLE vehicles ADD COLUMN monthlyBudget REAL');
+    await db.execute('''
+      CREATE TABLE trips (
+        id TEXT PRIMARY KEY,
+        vehicleId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        startAt TEXT NOT NULL,
+        startOdometer INTEGER NOT NULL,
+        endAt TEXT,
+        endOdometer INTEGER,
+        notes TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX idx_trips_vehicle ON trips(vehicleId, startAt)');
+    await db.execute('''
+      CREATE TABLE papers (
+        id TEXT PRIMARY KEY,
+        vehicleId TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        number TEXT NOT NULL DEFAULT '',
+        issuedOn TEXT,
+        expiresOn TEXT,
+        remindDays INTEGER NOT NULL DEFAULT 7,
+        notes TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE parts (
+        id TEXT PRIMARY KEY,
+        vehicleId TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        label TEXT NOT NULL,
+        brand TEXT NOT NULL DEFAULT '',
+        fittedAt TEXT NOT NULL,
+        fittedOdometer INTEGER NOT NULL,
+        lifeKm INTEGER,
+        lifeMonths INTEGER,
+        warrantyUntil TEXT,
+        notes TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE attachments (
+        id TEXT PRIMARY KEY,
+        ownerType TEXT NOT NULL,
+        ownerId TEXT NOT NULL,
+        file TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        createdAt TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX idx_attachments_owner ON attachments(ownerType, ownerId)');
   }
 
   /// Schema 5: per-vehicle cost per km bands and picture choice.
@@ -229,7 +297,8 @@ class DatabaseHelper {
           ..remove('model')
           ..remove('mileageBands')
           ..remove('costBands')
-          ..remove('icon'));
+          ..remove('icon')
+          ..remove('monthlyBudget'));
   }
 
   /// The vehicle every pre-v2.0.0 log belongs to, as created by the schema 3
@@ -264,10 +333,14 @@ class DatabaseHelper {
     if (log.pumpId == null) await linkLogsToPumps(db);
   }
 
-  /// Delete a fuel log entry by ID.
-  Future<void> deleteLog(String id) async {
+  /// Delete a fuel log entry by ID, with its receipts. Returns the
+  /// receipts' file names for the caller to delete.
+  Future<List<String>> deleteLog(String id) async {
     final db = await database;
-    await db.delete('fuel_logs', where: 'id = ?', whereArgs: [id]);
+    return db.transaction((txn) async {
+      await txn.delete('fuel_logs', where: 'id = ?', whereArgs: [id]);
+      return _dropAttachments(txn, 'fuel', id);
+    });
   }
 
   /// One vehicle's logs, newest-first (for display).
@@ -409,13 +482,35 @@ class DatabaseHelper {
     await db.update('vehicles', v.toMap(), where: 'id = ?', whereArgs: [v.id]);
   }
 
-  /// Removes the vehicle and every log it owns, together or not at all.
-  Future<void> deleteVehicle(String id) async {
+  /// Removes the vehicle and everything it owns, together or not at all.
+  /// Returns the file names of the bills and photos it owned, for the
+  /// caller to delete.
+  Future<List<String>> deleteVehicle(String id) async {
     final db = await database;
-    await db.transaction((txn) async {
-      await txn.delete('fuel_logs', where: 'vehicleId = ?', whereArgs: [id]);
-      await txn.delete('services', where: 'vehicleId = ?', whereArgs: [id]);
+    return db.transaction((txn) async {
+      const owned = "(ownerType = 'service' AND ownerId IN "
+          '(SELECT id FROM services WHERE vehicleId = ?)) OR '
+          "(ownerType = 'fuel' AND ownerId IN "
+          '(SELECT id FROM fuel_logs WHERE vehicleId = ?)) OR '
+          "(ownerType = 'paper' AND ownerId IN "
+          '(SELECT id FROM papers WHERE vehicleId = ?))';
+      final files = [
+        for (final r in await txn.query('attachments',
+            columns: ['file'], where: owned, whereArgs: [id, id, id]))
+          r['file'] as String,
+      ];
+      await txn.delete('attachments', where: owned, whereArgs: [id, id, id]);
+      for (final table in const [
+        'fuel_logs',
+        'services',
+        'trips',
+        'papers',
+        'parts',
+      ]) {
+        await txn.delete(table, where: 'vehicleId = ?', whereArgs: [id]);
+      }
       await txn.delete('vehicles', where: 'id = ?', whereArgs: [id]);
+      return files;
     });
   }
 
@@ -445,6 +540,10 @@ class DatabaseHelper {
       'workshops',
       'service_types',
       'services',
+      'trips',
+      'papers',
+      'parts',
+      'attachments',
     ]) {
       await txn.delete(table);
     }
@@ -464,9 +563,15 @@ class DatabaseHelper {
     List<Workshop> workshops = const [],
     List<ServiceType> serviceTypes = const [],
     List<ServiceRecord> services = const [],
+    List<Trip> trips = const [],
+    List<Paper> papers = const [],
+    List<Part> parts = const [],
+    List<Attachment> attachments = const [],
   }) async {
     final db = await database;
     await db.transaction((txn) async {
+      await _insertAll(txn, trips, papers, parts, attachments,
+          ConflictAlgorithm.replace);
       for (final v in newVehicles) {
         await txn.insert('vehicles', v.toMap(),
             conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -513,10 +618,16 @@ class DatabaseHelper {
     List<Workshop> workshops = const [],
     List<ServiceType> serviceTypes = const [],
     List<ServiceRecord> services = const [],
+    List<Trip> trips = const [],
+    List<Paper> papers = const [],
+    List<Part> parts = const [],
+    List<Attachment> attachments = const [],
   }) async {
     final db = await database;
     await db.transaction((txn) async {
       await _clearAll(txn);
+      await _insertAll(txn, trips, papers, parts, attachments,
+          ConflictAlgorithm.replace);
       for (final p in pumps) {
         await txn.insert('pumps', p.toMap());
       }
@@ -649,8 +760,210 @@ class DatabaseHelper {
     await db.update('services', s.toMap(), where: 'id = ?', whereArgs: [s.id]);
   }
 
-  Future<void> deleteService(String id) async {
+  /// Deletes the service with its bills. Returns the bills' file names for
+  /// the caller to delete.
+  Future<List<String>> deleteService(String id) async {
     final db = await database;
-    await db.delete('services', where: 'id = ?', whereArgs: [id]);
+    return db.transaction((txn) async {
+      await txn.delete('services', where: 'id = ?', whereArgs: [id]);
+      return _dropAttachments(txn, 'service', id);
+    });
+  }
+
+  // ── Schema 6 tables ───────────────────────────────────────────────────
+
+  static Future<void> _insertAll(
+    DatabaseExecutor txn,
+    List<Trip> trips,
+    List<Paper> papers,
+    List<Part> parts,
+    List<Attachment> attachments,
+    ConflictAlgorithm onConflict,
+  ) async {
+    for (final t in trips) {
+      await txn.insert('trips', t.toMap(), conflictAlgorithm: onConflict);
+    }
+    for (final p in papers) {
+      await txn.insert('papers', p.toMap(), conflictAlgorithm: onConflict);
+    }
+    for (final p in parts) {
+      await txn.insert('parts', p.toMap(), conflictAlgorithm: onConflict);
+    }
+    for (final a in attachments) {
+      await txn.insert('attachments', a.toMap(), conflictAlgorithm: onConflict);
+    }
+  }
+
+  /// Deletes an owner's attachment rows and returns their file names.
+  static Future<List<String>> _dropAttachments(
+      DatabaseExecutor txn, String ownerType, String ownerId) async {
+    const where = 'ownerType = ? AND ownerId = ?';
+    final rows = await txn.query('attachments',
+        columns: ['file'], where: where, whereArgs: [ownerType, ownerId]);
+    await txn.delete('attachments', where: where, whereArgs: [ownerType, ownerId]);
+    return [for (final r in rows) r['file'] as String];
+  }
+
+  // Trips
+
+  /// One vehicle's trips, newest first.
+  Future<List<Trip>> getTrips(String vehicleId) async {
+    final db = await database;
+    final maps = await db.query('trips',
+        where: 'vehicleId = ?', whereArgs: [vehicleId], orderBy: 'startAt DESC');
+    return maps.map(Trip.fromMap).toList();
+  }
+
+  Future<List<Trip>> getEveryTrip() async {
+    final db = await database;
+    return (await db.query('trips', orderBy: 'startAt ASC'))
+        .map(Trip.fromMap)
+        .toList();
+  }
+
+  Future<Trip?> getTrip(String id) async {
+    final db = await database;
+    final maps = await db.query('trips', where: 'id = ?', whereArgs: [id]);
+    return maps.isEmpty ? null : Trip.fromMap(maps.first);
+  }
+
+  /// The trip on [vehicleId] that has not ended, or null.
+  Future<Trip?> activeTrip(String vehicleId) async {
+    final db = await database;
+    final maps = await db.query('trips',
+        where: 'vehicleId = ? AND endAt IS NULL',
+        whereArgs: [vehicleId],
+        orderBy: 'startAt DESC',
+        limit: 1);
+    return maps.isEmpty ? null : Trip.fromMap(maps.first);
+  }
+
+  Future<void> saveTrip(Trip t) async {
+    final db = await database;
+    await db.insert('trips', t.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Deletes the trip; its fill-ups stay, no longer on a trip.
+  Future<void> deleteTrip(String id) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.update('fuel_logs', {'tripId': null},
+          where: 'tripId = ?', whereArgs: [id]);
+      await txn.delete('trips', where: 'id = ?', whereArgs: [id]);
+    });
+  }
+
+  /// Takes fill-ups made after [endAt] off the trip.
+  Future<void> untagAfter(String tripId, String endAt) async {
+    final db = await database;
+    await db.update('fuel_logs', {'tripId': null},
+        where: 'tripId = ? AND timestamp > ?', whereArgs: [tripId, endAt]);
+  }
+
+  /// A trip's fill-ups, oldest first.
+  Future<List<FuelLog>> getTripLogs(String tripId) async {
+    final db = await database;
+    final maps = await db.query('fuel_logs',
+        where: 'tripId = ?', whereArgs: [tripId], orderBy: 'timestamp ASC');
+    return maps.map(FuelLog.fromMap).toList();
+  }
+
+  // Papers
+
+  /// One vehicle's papers, the nearest expiry first, then those without one.
+  Future<List<Paper>> getPapers(String vehicleId) async {
+    final db = await database;
+    final maps = await db.query('papers',
+        where: 'vehicleId = ?',
+        whereArgs: [vehicleId],
+        orderBy: 'expiresOn IS NULL, expiresOn, kind');
+    return maps.map(Paper.fromMap).toList();
+  }
+
+  Future<List<Paper>> getEveryPaper() async {
+    final db = await database;
+    return (await db.query('papers')).map(Paper.fromMap).toList();
+  }
+
+  Future<void> savePaper(Paper p) async {
+    final db = await database;
+    await db.insert('papers', p.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Deletes the paper with its photos. Returns the photos' file names for
+  /// the caller to delete.
+  Future<List<String>> deletePaper(String id) async {
+    final db = await database;
+    return db.transaction((txn) async {
+      await txn.delete('papers', where: 'id = ?', whereArgs: [id]);
+      return _dropAttachments(txn, 'paper', id);
+    });
+  }
+
+  // Parts
+
+  Future<List<Part>> getParts(String vehicleId) async {
+    final db = await database;
+    final maps = await db.query('parts',
+        where: 'vehicleId = ?', whereArgs: [vehicleId], orderBy: 'kind, label');
+    return maps.map(Part.fromMap).toList();
+  }
+
+  Future<List<Part>> getEveryPart() async {
+    final db = await database;
+    return (await db.query('parts')).map(Part.fromMap).toList();
+  }
+
+  Future<void> savePart(Part p) async {
+    final db = await database;
+    await db.insert('parts', p.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deletePart(String id) async {
+    final db = await database;
+    await db.delete('parts', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Attachments
+
+  /// One owner's attachments, oldest first.
+  Future<List<Attachment>> getAttachments(
+      String ownerType, String ownerId) async {
+    final db = await database;
+    final maps = await db.query('attachments',
+        where: 'ownerType = ? AND ownerId = ?',
+        whereArgs: [ownerType, ownerId],
+        orderBy: 'createdAt');
+    return maps.map(Attachment.fromMap).toList();
+  }
+
+  /// How many attachments each owner of [ownerType] has, by owner id.
+  Future<Map<String, int>> attachmentCounts(String ownerType) async {
+    final db = await database;
+    final rows = await db.rawQuery(
+        'SELECT ownerId, COUNT(*) AS n FROM attachments '
+        'WHERE ownerType = ? GROUP BY ownerId',
+        [ownerType]);
+    return {for (final r in rows) r['ownerId'] as String: r['n'] as int};
+  }
+
+  Future<List<Attachment>> getEveryAttachment() async {
+    final db = await database;
+    return (await db.query('attachments')).map(Attachment.fromMap).toList();
+  }
+
+  Future<void> saveAttachment(Attachment a) async {
+    final db = await database;
+    await db.insert('attachments', a.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Deletes one attachment row by id.
+  Future<void> deleteAttachment(String id) async {
+    final db = await database;
+    await db.delete('attachments', where: 'id = ?', whereArgs: [id]);
   }
 }

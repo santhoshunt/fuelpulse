@@ -244,7 +244,7 @@ class UpdateService {
       return CheckFailed('Could not read the app version: $e');
     }
     if (abi == null) {
-      return const CheckFailed("This phone's processor has no FuelPulse build.");
+      return const CheckFailed("This phone's processor has no My H'ness build.");
     }
     final client = _clientFactory();
     try {

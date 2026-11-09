@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import '../db/database_helper.dart';
+import '../models/attachment.dart';
 import '../models/fuel_log.dart';
 import '../models/pump.dart';
+import '../models/trip.dart';
 import '../models/vehicle.dart';
 import '../services/photo_scan.dart';
 import '../services/service_reminders.dart';
@@ -12,11 +14,13 @@ import '../utils/constants.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/brand_grades.dart';
 import '../widgets/add_fuel_type_dialog.dart';
+import '../widgets/bills_section.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/mode_switch.dart';
 import '../widgets/option_picker.dart';
 import 'pumps_screen.dart';
 import 'scan_photos_screen.dart';
+import 'trip_sheets.dart';
 
 /// Add or edit a fill-up. One form serves both so the fields, cost sync and
 /// pickers stay identical between the two flows.
@@ -86,6 +90,17 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   Map<String, List<String>> _grades = const {};
   bool _fullTank = true;
   bool _saving = false;
+  List<Attachment> _bills = const [];
+  List<Attachment> _billsBefore = const [];
+
+  /// Set once saved, so closing the form keeps the receipts it added.
+  bool _saved = false;
+
+  /// The trip this fill-up can belong to: the vehicle's trip on now, or
+  /// when editing, the trip the fill-up is already on.
+  Trip? _trip;
+  bool _onTrip = true;
+  bool _tripEndsHere = false;
   late bool _loading = _isEdit;
 
   String _selectedFuelType = kDefaultFuelType;
@@ -135,8 +150,10 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       final chrono = await _db.getAllLogsChrono(widget.vehicleId!);
       final grades = await loadBrandGrades();
       final pumps = await _db.getPumps();
+      final trip = await _db.activeTrip(widget.vehicleId!);
       if (!mounted) return;
       setState(() {
+        _trip = trip;
         _vehicle = vehicle;
         _baseOdometer = last?.odometer;
         _others = chrono;
@@ -175,11 +192,18 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     final pumps = await _db.getPumps();
 
     final vehicle = await _db.getVehicle(log.vehicleId);
+    final bills = await _db.getAttachments('fuel', log.id);
+    final trip = log.tripId != null
+        ? await _db.getTrip(log.tripId!)
+        : await _db.activeTrip(log.vehicleId);
     if (!mounted) return;
 
     setState(() {
       _original = log;
       _vehicle = vehicle;
+      _bills = _billsBefore = bills;
+      _trip = trip;
+      _onTrip = log.tripId != null;
       _baseOdometer = prevOdo;
       _others = [...chrono]..removeWhere((l) => l.id == log.id);
       _when = DateTime.tryParse(log.timestamp) ?? DateTime.now();
@@ -210,6 +234,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     _notesController.dispose();
     _priceController.dispose();
     _costController.dispose();
+    if (!_saved) discardBills(_bills, _billsBefore);
     super.dispose();
   }
 
@@ -637,6 +662,9 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     final newTotal = double.tryParse(_costController.text.trim());
     final newPrice = double.tryParse(_priceController.text.trim());
 
+    final logId = _original?.id ?? FuelLog.generateId();
+    final trip = _trip;
+    final tripId = trip != null && _onTrip ? trip.id : null;
     try {
       if (_isEdit) {
         final updated = _original!.copyWith(
@@ -657,12 +685,14 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           clearTotalCost: newTotal == null,
           pricePerLitre: newPrice,
           clearPricePerLitre: newPrice == null,
+          tripId: tripId,
+          clearTripId: tripId == null,
         );
         await _db.updateLog(updated);
       } else {
         final log = FuelLog(
           vehicleId: widget.vehicleId!,
-          id: FuelLog.generateId(),
+          id: logId,
           timestamp: _when.toIso8601String(),
           odometer: odometer,
           liters: liters,
@@ -673,8 +703,19 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
           fuelType: _selectedFuelType,
           totalCost: newTotal,
           pricePerLitre: newPrice,
+          tripId: tripId,
         );
         await _db.insertLog(log);
+      }
+      await saveBills(logId, _bills, _billsBefore);
+      _saved = true;
+      if (trip != null && trip.isActive && tripId != null && _tripEndsHere) {
+        await endTrip(trip, odometer,
+            _isEdit && !_whenTouched
+                ? DateTime.tryParse(_original!.timestamp) ?? _when
+                : _when);
+      } else if (trip != null && trip.isActive) {
+        await refreshTripNotification(trip.vehicleId);
       }
       await ServiceReminders.instance
           .checkKmDue(_original?.vehicleId ?? widget.vehicleId!, odometer);
@@ -1015,6 +1056,43 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                     ],
                   ),
                 ),
+              ),
+
+              if (_trip != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        secondary: Icon(Icons.route, color: colors.secondary),
+                        title: Text('Part of ${_trip!.name}'),
+                        value: _onTrip,
+                        onChanged: (v) => setState(() {
+                          _onTrip = v;
+                          if (!v) _tripEndsHere = false;
+                        }),
+                      ),
+                      if (_trip!.isActive && _onTrip)
+                        SwitchListTile(
+                          secondary:
+                              Icon(Icons.flag_outlined, color: colors.secondary),
+                          title: const Text('The trip ends here'),
+                          subtitle: const Text(
+                              "Ends it at this fill-up's odometer and time."),
+                          value: _tripEndsHere,
+                          onChanged: (v) => setState(() => _tripEndsHere = v),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+
+              _section('Receipts (optional)', colors),
+              BillsSection(
+                ownerType: 'fuel',
+                items: _bills,
+                onChanged: (l) => setState(() => _bills = l),
               ),
 
               _section('Notes', colors),

@@ -237,7 +237,7 @@ void main() {
         'logs': [_log('future').toMap()],
       }, replace: true),
       throwsA(isA<FormatException>().having(
-          (e) => e.message, 'message', contains('newer FuelPulse'))),
+          (e) => e.message, 'message', contains("newer version of My H'ness"))),
     );
     expect(await db.getLogById('keep-me'), isNotNull);
     expect(await db.getLogById('future'), isNull);

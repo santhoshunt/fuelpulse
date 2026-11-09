@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../db/database_helper.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../utils/appearance_prefs.dart';
+import '../utils/constants.dart';
 import '../utils/mileage_bands.dart';
 import '../utils/page_routes.dart';
 import '../utils/vehicle_manager.dart';
+import '../widgets/option_picker.dart';
 import 'appearance_screen.dart';
 import 'import_export_screen.dart';
 import 'mileage_ranges_screen.dart';
@@ -36,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _pumpCount = 0;
   int _workshopCount = 0;
   int _typeCount = 0;
+  int _alertPercent = kMileageAlertDefault;
 
   @override
   void initState() {
@@ -47,13 +51,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final db = DatabaseHelper();
     final pumps = await db.getPumps();
     final workshops = await db.getWorkshops();
+    final prefs = await SharedPreferences.getInstance();
+    final alert = prefs.getInt(kMileageAlertKey) ?? kMileageAlertDefault;
     final types = await db.getServiceTypes();
     if (!mounted) return;
     setState(() {
       _pumpCount = pumps.length;
       _workshopCount = workshops.length;
       _typeCount = types.length;
+      _alertPercent = alert;
     });
+  }
+
+  /// How far below average a tank's km/L must be to raise the Dashboard
+  /// alert; 0 turns it off.
+  Future<void> _pickAlert() async {
+    final r = await showOptionPicker<int>(
+      context: context,
+      title: 'Mileage drop alert',
+      options: [
+        for (final p in const [0, 10, 15, 20, 25])
+          PickerOption(
+              value: p, label: p == 0 ? 'Off' : '$p% below average'),
+      ],
+      selected: _alertPercent,
+    );
+    if (r is! PickerPicked<int>) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(kMileageAlertKey, r.value);
+    if (mounted) setState(() => _alertPercent = r.value);
   }
 
   /// A restore (Drive or backup file) or a data wipe changed what Settings
@@ -169,6 +195,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.currency_rupee,
                 label: 'Cost per km ranges',
                 onTap: () => _ranges(cost: true),
+              ),
+              SettingsRow(
+                icon: Icons.trending_down,
+                label: 'Mileage drop alert',
+                trailing: Text(
+                    _alertPercent == 0 ? 'Off' : '$_alertPercent%',
+                    style: value),
+                onTap: _pickAlert,
               ),
             ]),
             const SizedBox(height: 32),

@@ -30,7 +30,7 @@ Map<String, dynamic> decodeBackupGz(Uint8List bytes) {
   }
   final decoded = jsonDecode(utf8.decode(raw));
   if (decoded is! Map<String, dynamic>) {
-    throw const FormatException('Not a FuelPulse backup file');
+    throw const FormatException("Not a My H'ness backup file");
   }
   return decoded;
 }

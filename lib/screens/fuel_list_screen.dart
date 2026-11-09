@@ -6,6 +6,7 @@ import '../models/fuel_log.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
+import '../utils/custom_pictures.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/page_routes.dart';
 import '../utils/vehicle_manager.dart';
@@ -256,7 +257,7 @@ class _FuelListScreenState extends State<FuelListScreen> {
         await _open(EntryFormScreen(logId: log.id));
       case GradeAction.delete:
         if (await _confirmDelete(log)) {
-          await _db.deleteLog(log.id);
+          await deletePictureFiles(await _db.deleteLog(log.id));
           widget.reload.value++;
         }
     }

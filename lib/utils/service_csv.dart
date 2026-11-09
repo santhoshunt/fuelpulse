@@ -33,7 +33,7 @@ Future<void> exportServiceTemplate() async {
   final file = File('${dir.path}/fuelpulse_services_template.csv');
   await file.writeAsString(const ListToCsvConverter().convert([kServiceCsvHeaders]));
   await SharePlus.instance.share(ShareParams(
-      files: [XFile(file.path)], subject: 'FuelPulse service template'));
+      files: [XFile(file.path)], subject: "My H'ness service template"));
 }
 
 /// Picks a CSV and adds its services to [vehicleId]. Returns how many were

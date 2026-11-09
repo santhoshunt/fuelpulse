@@ -140,7 +140,7 @@ class _ScanPhotosScreenState extends State<ScanPhotosScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           Text(
-              'Take or pick two photos. FuelPulse reads them on your phone; '
+              "Take or pick two photos. My H'ness reads them on your phone; "
               'nothing is uploaded.',
               style: TextStyle(color: colors.textSecondary, fontSize: 14)),
           const SizedBox(height: 14),

@@ -54,7 +54,7 @@ String dueText(NextService n) {
   return '${parts.join(' or ')} left';
 }
 
-/// The Service tab: the next scheduled service for the active vehicle and
+/// The Service list in the Garage tab: the next scheduled service for the active vehicle and
 /// its service history.
 class ServiceScreen extends StatefulWidget {
   final ValueNotifier<int> reload;
@@ -74,6 +74,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
   int? _odometer;
   bool _loading = true;
   bool _notificationsOn = true;
+  Map<String, int> _billCounts = const {};
 
   @override
   void initState() {
@@ -104,6 +105,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
     final ws = await _db.getWorkshops();
     final odo = await latestOdometer(vehicle.id);
     final on = await ServiceReminders.instance.enabled();
+    final bills = await _db.attachmentCounts('service');
     if (!mounted) return;
     setState(() {
       _vehicle = vehicle;
@@ -112,6 +114,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
       _workshops = {for (final w in ws) w.id: w};
       _odometer = odo;
       _notificationsOn = on;
+      _billCounts = bills;
       _loading = false;
     });
   }
@@ -160,17 +163,6 @@ class _ServiceScreenState extends State<ServiceScreen> {
                       ),
                     ],
                   ),
-                  Text('Service',
-                      style: TextStyle(
-                          color: colors.textPrimary,
-                          fontSize: 34,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5)),
-                  Text(_vehicle?.name ?? '',
-                      style: TextStyle(
-                          color: colors.textSecondary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500)),
                   if (_services.isEmpty)
                     _empty(colors)
                   else ...[
@@ -375,6 +367,16 @@ class _ServiceScreenState extends State<ServiceScreen> {
                                   DateTime.tryParse(_services[i].timestamp) ??
                                       DateTime.now()),
                               style: muted),
+                          if ((_billCounts[_services[i].id] ?? 0) > 0)
+                            Row(children: [
+                              Icon(Icons.attach_file,
+                                  size: 15, color: colors.textSecondary),
+                              Text(
+                                  _billCounts[_services[i].id] == 1
+                                      ? '1 bill'
+                                      : '${_billCounts[_services[i].id]} bills',
+                                  style: muted),
+                            ]),
                         ],
                       ),
                     ),

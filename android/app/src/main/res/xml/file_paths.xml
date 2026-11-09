@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bills copied here by MainActivity.openFile are readable by the app
+     that opens them, through the FileProvider in AndroidManifest.xml. -->
+<paths>
+    <cache-path name="shared" path="shared/" />
+</paths>

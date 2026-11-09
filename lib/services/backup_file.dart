@@ -25,7 +25,7 @@ Future<String> exportBackupFile() async {
 
   await SharePlus.instance.share(ShareParams(
     files: [XFile(file.path, mimeType: 'application/gzip')],
-    subject: 'FuelPulse Backup',
+    subject: "My H'ness backup",
   ));
   return name;
 }

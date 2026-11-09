@@ -19,8 +19,10 @@ import 'analytics_screen.dart';
 import 'dashboard_screen.dart';
 import 'entry_form_screen.dart';
 import 'fuel_list_screen.dart';
+import 'garage_screen.dart';
 import 'scan_photos_screen.dart';
-import 'service_screen.dart';
+import 'trip_screen.dart';
+import 'trip_sheets.dart';
 import 'settings_screen.dart';
 
 /// The app's root: one tab per area over an [IndexedStack], so each tab
@@ -39,7 +41,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _reload = ValueNotifier<int>(0);
   int _tab = 0;
 
+  /// The Garage tab's list: 0 Service, 1 Trips, 2 Papers.
+  final _garageSection = ValueNotifier<int>(0);
+
   StreamSubscription<Uri?>? _widgetTaps;
+  StreamSubscription<Uri>? _notificationTaps;
 
   @override
   void initState() {
@@ -59,7 +65,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         unawaited(DriveBackupService().checkAndRunScheduled());
         // Restores and edits change schedules; rebuild the reminders.
         unawaited(ServiceReminders.instance.rescheduleAll());
+        unawaited(_restoreTripNotifications());
       });
+      // Taps on the trip notification and its buttons open like widget links.
+      _notificationTaps =
+          ServiceReminders.instance.taps.stream.listen(_openFromWidget);
+      ServiceReminders.instance.launchUri().then(_openFromWidget);
     }
     if (_updatesSupported) {
       WidgetsBinding.instance.addObserver(this);
@@ -72,16 +83,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  /// A widget tap's fuelpulse:// link: a tab, or a form opened over it.
+  /// A phone may drop an ongoing notification (battery saver, a restart);
+  /// put back the one for every trip still on.
+  Future<void> _restoreTripNotifications() async {
+    for (final v in await DatabaseHelper().getVehicles()) {
+      await refreshTripNotification(v.id);
+    }
+  }
+
+  /// A widget or notification tap's fuelpulse:// link: a tab, or a form or
+  /// page opened over it.
   Future<void> _openFromWidget(Uri? uri) async {
     if (uri == null || !mounted) return;
     const tabs = {'dashboard': 0, 'fuel': 1, 'service': 2, 'analytics': 3};
     final tab = tabs[uri.host];
     if (tab != null) {
+      if (uri.host == 'service') _garageSection.value = 0;
       _select(tab);
       return;
     }
-    final v = await loadActiveVehicle();
+    // A trip notification's link names the trip's vehicle (?v=id).
+    final named = uri.queryParameters['v'];
+    final v = (named == null ? null : await DatabaseHelper().getVehicle(named)) ??
+        await loadActiveVehicle();
     if (!mounted) return;
     switch (uri.host) {
       case 'add':
@@ -102,15 +126,27 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       case 'odometer':
         await showOdometerDialog(context,
             vehicleId: v.id, vehicleName: v.name);
+      case 'trip':
+        final t = await DatabaseHelper().activeTrip(v.id);
+        if (t == null || !mounted) break;
+        await Navigator.push(
+            context, SmoothPageRoute(page: TripScreen(tripId: t.id)));
+      case 'endtrip':
+        final t = await DatabaseHelper().activeTrip(v.id);
+        if (t == null || !mounted) break;
+        await showEndTripSheet(context, t, v);
     }
+    await refreshTripNotification(v.id);
     _reload.value++;
   }
 
   @override
   void dispose() {
     _widgetTaps?.cancel();
+    _notificationTaps?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _reload.dispose();
+    _garageSection.dispose();
     super.dispose();
   }
 
@@ -182,7 +218,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (UpdateService.compareVersions(version, tag) != 0) return;
     messenger.showSnackBar(SnackBar(
       content: Text('Updated to $tag. You can turn off Install unknown apps '
-          'for FuelPulse again.'),
+          "for My H'ness again."),
       duration: const Duration(seconds: 8),
       action: SnackBarAction(
         label: 'Settings',
@@ -209,7 +245,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               children: [
                 DashboardScreen(reload: _reload),
                 FuelListScreen(reload: _reload),
-                ServiceScreen(reload: _reload),
+                GarageScreen(reload: _reload, section: _garageSection),
                 AnalyticsScreen(reload: _reload),
                 const SettingsScreen(),
               ],
@@ -231,9 +267,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               selectedIcon: Icon(Icons.local_gas_station),
               label: 'Fuel'),
           NavigationDestination(
-              icon: Icon(Icons.build_outlined),
-              selectedIcon: Icon(Icons.build),
-              label: 'Service'),
+              icon: Icon(Icons.garage_outlined),
+              selectedIcon: Icon(Icons.garage),
+              label: 'Garage'),
           NavigationDestination(
               icon: Icon(Icons.insights_outlined),
               selectedIcon: Icon(Icons.insights),

@@ -7,6 +7,7 @@ import '../models/pump.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
+import '../utils/custom_pictures.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/mileage_bands.dart';
 import '../utils/page_routes.dart';
@@ -101,7 +102,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
       ),
     );
     if (confirmed != true) return;
-    await _db.deleteLog(log.id);
+    await deletePictureFiles(await _db.deleteLog(log.id));
     if (mounted) Navigator.pop(context, true);
   }
 

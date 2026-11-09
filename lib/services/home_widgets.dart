@@ -138,9 +138,13 @@ class HomeWidgets {
       'service_left': next == null ? '' : dueText(next),
       'service_percent': next == null ? 0 : (next.progress() * 100).round(),
       'spend_month': '₹${_n.format(cost.monthSpend)} this month',
-      'spend_avg': cost.avgMonthlySpend == null
-          ? ''
-          : 'average ₹${_n.format(cost.avgMonthlySpend)} a month',
+      'spend_avg': v.monthlyBudget != null
+          ? (cost.monthSpend > v.monthlyBudget!
+              ? '₹${_n.format(cost.monthSpend - v.monthlyBudget!)} over the ₹${_n.format(v.monthlyBudget)} budget'
+              : '₹${_n.format(v.monthlyBudget! - cost.monthSpend)} left of ₹${_n.format(v.monthlyBudget)}')
+          : cost.avgMonthlySpend == null
+              ? ''
+              : 'average ₹${_n.format(cost.avgMonthlySpend)} a month',
       'pump_title': pumpTitle,
       'pump_figures': pumpFigures,
       'odo_value': odo == null ? '—' : '${_n.format(odo)} km',

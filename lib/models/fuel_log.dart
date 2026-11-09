@@ -30,6 +30,9 @@ class FuelLog {
   /// calculators and CSV.
   final String? pumpId;
 
+  /// The [Trip] this fill-up was made on, or null.
+  final String? tripId;
+
   FuelLog({
     required this.vehicleId,
     required this.id,
@@ -43,6 +46,7 @@ class FuelLog {
     this.totalCost,
     this.pricePerLitre,
     this.pumpId,
+    this.tripId,
   });
 
   /// Generate a unique ID based on current time + random suffix.
@@ -66,6 +70,7 @@ class FuelLog {
       'pricePerLitre': pricePerLitre,
       'vehicleId': vehicleId,
       'pumpId': pumpId,
+      'tripId': tripId,
     };
   }
 
@@ -88,6 +93,7 @@ class FuelLog {
       totalCost: (map['totalCost'] as num?)?.toDouble(),
       pricePerLitre: (map['pricePerLitre'] as num?)?.toDouble(),
       pumpId: map['pumpId'] as String?,
+      tripId: map['tripId'] as String?,
     );
   }
 
@@ -107,6 +113,8 @@ class FuelLog {
     String? vehicleId,
     String? pumpId,
     bool clearPumpId = false,
+    String? tripId,
+    bool clearTripId = false,
   }) {
     return FuelLog(
       vehicleId: vehicleId ?? this.vehicleId,
@@ -122,6 +130,7 @@ class FuelLog {
       pricePerLitre:
           clearPricePerLitre ? null : (pricePerLitre ?? this.pricePerLitre),
       pumpId: clearPumpId ? null : (pumpId ?? this.pumpId),
+      tripId: clearTripId ? null : (tripId ?? this.tripId),
     );
   }
 

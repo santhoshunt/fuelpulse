@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' show NumberFormat;
+import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
@@ -12,21 +12,24 @@ import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
+import '../utils/page_routes.dart';
 import '../utils/period_filter.dart';
 import '../utils/service_schedule.dart';
 import '../utils/trend_calculator.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/brand_logo.dart';
 import '../widgets/month_bar_chart.dart';
+import '../widgets/month_line_chart.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/trend_chart.dart';
 import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
+import 'year_report_screen.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
 /// The Analytics tab for the active vehicle: monthly fuel spend, mileage
-/// over time, brand and fuel grade comparisons, and totals. Each chart
-/// card picks its own period. Vehicles are never mixed: one vehicle's km/L
+/// over time, the price paid, brand and fuel grade comparisons, and totals.
+/// One period, picked at the top, applies to every card. Vehicles are never mixed: one vehicle's km/L
 /// next to another's would average into a meaningless number.
 class AnalyticsScreen extends StatefulWidget {
   final ValueNotifier<int> reload;
@@ -46,12 +49,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Vehicle? _vehicle;
   List<FuelLog> _chrono = const [];
   bool _loading = true;
-  int _spendMonths = 6;
-  int _mileageMonths = 6;
-  int _brandMonths = 6;
+  AnalyticsPeriod _period = const AnalyticsPeriod(PeriodKind.last12);
   bool _pumpByCost = false;
   bool _gradeByCost = false;
-  int _serviceMonths = 12;
   bool _serviceView = false;
   Map<String, Pump> _pumps = const {};
   List<ServiceRecord> _services = const [];
@@ -112,12 +112,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 children: [
-                  Text('Analytics',
-                      style: TextStyle(
-                          color: colors.textPrimary,
-                          fontSize: 34,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Analytics',
+                            style: TextStyle(
+                                color: colors.textPrimary,
+                                fontSize: 34,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.5)),
+                      ),
+                      IconButton(
+                        tooltip: 'Year report',
+                        icon: Icon(Icons.ios_share, color: colors.primary),
+                        onPressed: () => Navigator.push(
+                            context,
+                            SmoothPageRoute(
+                                page: YearReportScreen(now: widget.now))),
+                      ),
+                      ActionChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_periodLabel),
+                            const Icon(Icons.expand_more, size: 18),
+                          ],
+                        ),
+                        onPressed: _pickPeriod,
+                      ),
+                    ],
+                  ),
                   Text(_vehicle?.name ?? '',
                       style: TextStyle(
                           color: colors.textSecondary,
@@ -139,6 +163,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     _spendCard(colors),
                     const SizedBox(height: 14),
                     _mileageCard(),
+                    ..._priceCard(colors),
                     ..._pumpCard(colors),
                     ..._gradeCard(colors),
                     const SizedBox(height: 14),
@@ -204,53 +229,169 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           letterSpacing: 1.2,
           fontWeight: FontWeight.w600));
 
-  Widget _spendCard(AppColors colors) {
-    final start = periodStart(_spendMonths, now: _now);
-    final bars = <(DateTime, double)>[
-      for (var i = 0; i < _spendMonths; i++)
-        (DateTime(start.year, start.month + i), 0.0),
-    ];
-    for (final log in _chrono) {
-      final at = DateTime.tryParse(log.timestamp);
-      final spend =
-          log.totalCost ?? computeTotalCost(log.pricePerLitre, log.liters);
-      if (at == null || spend == null || at.isBefore(start)) continue;
-      final i = (at.year - start.year) * 12 + at.month - start.month;
-      if (i < bars.length) bars[i] = (bars[i].$1, bars[i].$2 + spend);
+  // ── Period ──────────────────────────────────────────────────────────
+
+  ({DateTime from, DateTime to}) get _range =>
+      periodRange(_period, _chrono, now: _now);
+
+  bool _inRange(String timestamp) {
+    final at = DateTime.tryParse(timestamp);
+    final r = _range;
+    return at != null && !at.isBefore(r.from) && !at.isAfter(r.to);
+  }
+
+  String get _periodLabel => switch (_period.kind) {
+        PeriodKind.last12 => '12 months',
+        PeriodKind.overall => 'Overall',
+        PeriodKind.custom => '${DateFormat('d MMM yy').format(_range.from)} '
+            'to ${DateFormat('d MMM yy').format(_range.to)}',
+      };
+
+  /// [items] summed per month across the period, every month present.
+  List<(DateTime, double)> _monthly(Iterable<(String, double)> items) {
+    final r = _range;
+    final months = monthsBetween(r.from, r.to);
+    final sums = List<double>.filled(months.length, 0);
+    for (final (ts, v) in items) {
+      final at = DateTime.tryParse(ts);
+      if (at == null || at.isBefore(r.from) || at.isAfter(r.to)) continue;
+      final i = (at.year - r.from.year) * 12 + at.month - r.from.month;
+      if (i >= 0 && i < sums.length) sums[i] += v;
     }
+    return [for (var i = 0; i < months.length; i++) (months[i], sums[i])];
+  }
+
+  /// A bar a month up to 12 months; a line you drag along beyond that.
+  Widget _monthChart(List<(DateTime, double)> points) {
+    String money(double v) => '₹${_grouped.format(v)}';
+    return points.length <= 12
+        ? MonthBarChart(bars: points, formatValue: money)
+        : MonthLineChart(points: points, formatValue: money);
+  }
+
+  Future<void> _pickPeriod() async {
+    final colors = AppColors.of(context);
+    final picked = await showModalBottomSheet<PeriodKind>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (k, label) in const [
+              (PeriodKind.last12, 'Last 12 months'),
+              (PeriodKind.overall, 'Overall'),
+              (PeriodKind.custom, 'Custom range…'),
+            ])
+              ListTile(
+                leading: k == PeriodKind.custom
+                    ? Icon(Icons.date_range, color: colors.primary)
+                    : null,
+                title: Text(label),
+                trailing: _period.kind == k
+                    ? Icon(Icons.check, color: colors.primary)
+                    : null,
+                onTap: () => Navigator.pop(ctx, k),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    if (picked != PeriodKind.custom) {
+      setState(() => _period = AnalyticsPeriod(picked));
+      return;
+    }
+    final custom = await showModalBottomSheet<AnalyticsPeriod>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _CustomRangeSheet(now: _now, current: _period),
+    );
+    if (custom != null && mounted) setState(() => _period = custom);
+  }
+
+  Widget _spendCard(AppColors colors) {
+    final bars = _monthly([
+      for (final log in _chrono)
+        if ((log.totalCost ?? computeTotalCost(log.pricePerLitre, log.liters))
+            case final spend?)
+          (log.timestamp, spend),
+    ]);
     final total = bars.fold<double>(0, (s, b) => s + b.$2);
     return _card([
       _head('Fuel expenses', '₹${_grouped.format(total)}', colors),
-      const SizedBox(height: 10),
-      PeriodSelector(
-          months: _spendMonths,
-          options: const [1, 3, 6, 12],
-          onChanged: (m) => setState(() => _spendMonths = m)),
       const SizedBox(height: 12),
-      MonthBarChart(bars: bars, formatValue: (v) => '₹${_grouped.format(v)}'),
+      _monthChart(bars),
     ]);
   }
 
   Widget _mileageCard() {
-    final start = periodStart(_mileageMonths, now: _now);
+    final r = _range;
     final trend = calculateSegmentTrend(_chrono)
-        .where((p) => !p.closedAt.isBefore(start))
+        .where((p) => !p.closedAt.isBefore(r.from) && !p.closedAt.isAfter(r.to))
         .toList();
     return TrendChart(
       title: 'Fuel mileage (km/L)',
       points: trend.map((p) => TrendPoint(p.closedAt, p.kmPerLitre)).toList(),
       formatValue: (v) => v.toStringAsFixed(1),
       emptyMessage: 'Trend appears after 2 completed full-tank segments.',
-      controls: PeriodSelector(
-          months: _mileageMonths,
-          options: const [1, 3, 6, 12],
-          onChanged: (m) => setState(() => _mileageMonths = m)),
     );
+  }
+
+  /// What each fill-up in the period cost a litre, and how the average
+  /// compares with the same months a year earlier.
+  List<Widget> _priceCard(AppColors colors) {
+    double? priceOf(FuelLog l) =>
+        l.pricePerLitre ?? computePricePerLitre(l.totalCost, l.liters);
+    final points = [
+      for (final l in _chrono)
+        if (_inRange(l.timestamp) && priceOf(l) != null)
+          TrendPoint(DateTime.parse(l.timestamp), priceOf(l)!),
+    ];
+    if (points.isEmpty) return const [];
+    double? average(DateTime from, DateTime to) {
+      var spend = 0.0, litres = 0.0;
+      for (final l in _chrono) {
+        final at = DateTime.tryParse(l.timestamp);
+        final p = priceOf(l);
+        if (at == null || p == null || at.isBefore(from) || at.isAfter(to)) {
+          continue;
+        }
+        spend += p * l.liters;
+        litres += l.liters;
+      }
+      return litres > 0 ? spend / litres : null;
+    }
+
+    final r = _range;
+    final now = average(r.from, r.to);
+    final before = average(DateTime(r.from.year - 1, r.from.month, r.from.day),
+        DateTime(r.to.year - 1, r.to.month, r.to.day, 23, 59, 59));
+    final diff = now != null && before != null ? now - before : null;
+    return [
+      const SizedBox(height: 14),
+      TrendChart(
+        title: 'Price you paid (₹/L)',
+        points: points,
+        formatValue: (v) => '₹${v.toStringAsFixed(2)}',
+        emptyMessage: 'Appears once fill-ups carry a price.',
+        controls: diff == null
+            ? null
+            : Text(
+                diff.abs() < 0.005
+                    ? 'Same as a year earlier'
+                    : '${diff > 0 ? 'Up' : 'Down'} ₹${diff.abs().toStringAsFixed(2)} '
+                        'on the same months a year earlier',
+                style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+      ),
+    ];
   }
 
   /// Km/L per pump, brand first, ranked by km/L or by ₹ per km.
   List<Widget> _pumpCard(AppColors colors) {
-    final window = logsInLastMonths(_chrono, _brandMonths, now: _now);
+    final window = logsInRange(_chrono, _range.from, _range.to);
     final r = calculateGroupedEfficiency(window, (l) => l.pumpId ?? '',
         emptyKeyLabel: 'Unknown pump');
     // Litre-weighted price per pump, from fills that carry one.
@@ -288,10 +429,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         rows: rows,
         byCost: _pumpByCost,
         onByCost: (v) => setState(() => _pumpByCost = v),
-        period: PeriodSelector(
-            months: _brandMonths,
-            options: const [3, 6, 12],
-            onChanged: (m) => setState(() => _brandMonths = m)),
       ),
     ];
   }
@@ -430,18 +567,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final strong = TextStyle(
         color: colors.textPrimary, fontSize: 15, fontWeight: FontWeight.w600);
 
-    // Spend per month in the window.
-    final start = periodStart(_serviceMonths, now: _now);
-    final bars = <(DateTime, double)>[
-      for (var i = 0; i < _serviceMonths; i++)
-        (DateTime(start.year, start.month + i), 0.0),
-    ];
-    for (final s in _services) {
-      final at = DateTime.tryParse(s.timestamp);
-      if (at == null || s.cost == null || at.isBefore(start)) continue;
-      final i = (at.year - start.year) * 12 + at.month - start.month;
-      if (i < bars.length) bars[i] = (bars[i].$1, bars[i].$2 + s.cost!);
-    }
+    // Spend per month in the period.
+    final bars = _monthly([
+      for (final s in _services)
+        if (s.cost != null) (s.timestamp, s.cost!),
+    ]);
     final windowSpend = bars.fold<double>(0, (a, b) => a + b.$2);
 
     // A visit's cost split evenly across the types done.
@@ -483,14 +613,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return [
       _card([
         _head('Service spend', '₹${_grouped.format(windowSpend)}', colors),
-        const SizedBox(height: 10),
-        PeriodSelector(
-            months: _serviceMonths,
-            options: const [3, 6, 12],
-            onChanged: (m) => setState(() => _serviceMonths = m)),
         const SizedBox(height: 12),
-        MonthBarChart(
-            bars: bars, formatValue: (v) => '₹${_grouped.format(v)}'),
+        _monthChart(bars),
       ]),
       if (typeRows.isNotEmpty) ...[
         const SizedBox(height: 14),
@@ -576,7 +700,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     ];
   }
   List<Widget> _gradeCard(AppColors colors) {
-    final r = calculateFuelTypeEfficiency(_chrono);
+    final r = calculateFuelTypeEfficiency(
+        logsInRange(_chrono, _range.from, _range.to));
     if (r.rankings.isEmpty) return const [];
     return [
       const SizedBox(height: 14),
@@ -595,17 +720,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         ],
         byCost: _gradeByCost,
         onByCost: (v) => setState(() => _gradeByCost = v),
-        footnote: 'All time',
       ),
     ];
   }
   Widget _totalsCard(AppColors colors) {
-    final cost = calculateCostStats(_chrono, now: _now);
-    final distance = _chrono.length < 2
+    final inPeriod = [for (final l in _chrono) if (_inRange(l.timestamp)) l];
+    final spend = inPeriod.fold<double>(
+        0,
+        (s, l) =>
+            s + (l.totalCost ?? computeTotalCost(l.pricePerLitre, l.liters) ?? 0));
+    final distance = inPeriod.length < 2
         ? 0
-        : _chrono.map((l) => l.odometer).reduce(math.max) -
-            _chrono.map((l) => l.odometer).reduce(math.min);
-    final litres = _chrono.fold<double>(0, (s, l) => s + l.liters);
+        : inPeriod.map((l) => l.odometer).reduce(math.max) -
+            inPeriod.map((l) => l.odometer).reduce(math.min);
+    final litres = inPeriod.fold<double>(0, (s, l) => s + l.liters);
     Widget figure(String cap, String value) => Expanded(
           child: Column(
             children: [
@@ -624,13 +752,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return _card([
       Row(
         children: [
-          figure('Spend', '₹${_grouped.format(cost.totalSpend)}'),
+          figure('Spend', '₹${_grouped.format(spend)}'),
           figure('Distance', '${_grouped.format(distance)} km'),
           figure('Litres', '${litres.toStringAsFixed(1)} L'),
         ],
       ),
       const SizedBox(height: 8),
-      Text('All time',
+      Text(_period.kind == PeriodKind.overall ? 'All time' : _periodLabel,
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.textSecondary, fontSize: 12)),
     ]);
@@ -661,4 +789,123 @@ class _Ranked {
 
   double? get perKm =>
       perKmOverride ?? (price != null && kmL > 0 ? price! / kmL : null);
+}
+
+/// A custom period: quick picks (this month, the last 3 or 6 months, the
+/// April to March financial years) or any From and To dates.
+class _CustomRangeSheet extends StatefulWidget {
+  final DateTime now;
+  final AnalyticsPeriod current;
+
+  const _CustomRangeSheet({required this.now, required this.current});
+
+  @override
+  State<_CustomRangeSheet> createState() => _CustomRangeSheetState();
+}
+
+class _CustomRangeSheetState extends State<_CustomRangeSheet> {
+  late final DateTime _today =
+      DateTime(widget.now.year, widget.now.month, widget.now.day);
+  late DateTime _from = widget.current.kind == PeriodKind.custom
+      ? widget.current.from!
+      : DateTime(_today.year, _today.month - 2);
+  late DateTime _to =
+      widget.current.kind == PeriodKind.custom ? widget.current.to! : _today;
+
+  List<(String, DateTime, DateTime)> get _picks {
+    final fyStart = _today.month >= 4 ? _today.year : _today.year - 1;
+    String fy(int y) => 'FY $y-${'${y + 1}'.substring(2)}';
+    return [
+      ('This month', DateTime(_today.year, _today.month), _today),
+      ('Last 3 months', DateTime(_today.year, _today.month - 2), _today),
+      ('Last 6 months', DateTime(_today.year, _today.month - 5), _today),
+      (fy(fyStart), DateTime(fyStart, 4), _today),
+      (fy(fyStart - 1), DateTime(fyStart - 1, 4), DateTime(fyStart, 3, 31)),
+    ];
+  }
+
+  Future<void> _pick(bool from) async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: from ? _from : _to,
+      firstDate: DateTime(2000),
+      lastDate: _today,
+    );
+    if (d != null) setState(() => from ? _from = d : _to = d);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final shown = DateFormat('d MMM y');
+    final valid = !_from.isAfter(_to);
+    Widget field(String label, DateTime v, bool from) => Expanded(
+          child: InkWell(
+            onTap: () => _pick(from),
+            borderRadius: BorderRadius.circular(12),
+            child: InputDecorator(
+              decoration: InputDecoration(
+                  labelText: label,
+                  prefixIcon: const Icon(Icons.event_outlined)),
+              child: Text(shown.format(v),
+                  style: TextStyle(color: colors.textPrimary, fontSize: 15)),
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Custom range',
+              style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final (label, f, t) in _picks)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _from == f && _to == t,
+                  onSelected: (_) => setState(() {
+                    _from = f;
+                    _to = t;
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              field('From', _from, true),
+              const SizedBox(width: 10),
+              field('To', _to, false),
+            ],
+          ),
+          if (!valid)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('From must be on or before To',
+                  style: TextStyle(color: colors.danger, fontSize: 12)),
+            ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 50,
+            child: ElevatedButton(
+              onPressed: valid
+                  ? () => Navigator.pop(context,
+                      AnalyticsPeriod(PeriodKind.custom, from: _from, to: _to))
+                  : null,
+              child: const Text('Show'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

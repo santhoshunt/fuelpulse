@@ -387,7 +387,7 @@ class ScanResult {
   /// its position, so a misread can be traced without the phone attached.
   String report(String appVersion) {
     final b = StringBuffer()
-      ..writeln('FuelPulse scan report')
+      ..writeln("My H'ness scan report")
       ..writeln('App: $appVersion')
       ..writeln('Device: ${Platform.operatingSystem} '
           '${Platform.operatingSystemVersion}')
@@ -415,7 +415,7 @@ class ScanResult {
 
   /// Opens the share sheet with the report text and the photo attached.
   Future<void> share(String appVersion) => SharePlus.instance.share(ShareParams(
-        subject: 'FuelPulse scan report (${kind.name})',
+        subject: "My H'ness scan report (${kind.name})",
         text: report(appVersion),
         files: [XFile(photoPath)],
       ));

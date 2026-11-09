@@ -31,6 +31,9 @@ class Vehicle {
 
   /// Litres. Null when unknown: the tank level estimate is then hidden.
   final double? tankCapacity;
+
+  /// Rupees a month for fuel; null when no budget is set.
+  final double? monthlyBudget;
   final int sortOrder;
   final String createdAt;
 
@@ -43,6 +46,7 @@ class Vehicle {
     this.costBands,
     this.icon,
     this.tankCapacity,
+    this.monthlyBudget,
     this.sortOrder = 0,
     required this.createdAt,
   });
@@ -63,6 +67,7 @@ class Vehicle {
         'costBands': costBands == null ? null : jsonEncode(costBands),
         'icon': icon,
         'tankCapacity': tankCapacity,
+        'monthlyBudget': monthlyBudget,
         'sortOrder': sortOrder,
         'createdAt': createdAt,
       };
@@ -72,6 +77,7 @@ class Vehicle {
   factory Vehicle.fromMap(Map<String, dynamic> map) {
     final typeName = map['type'] as String?;
     final cap = (map['tankCapacity'] as num?)?.toDouble();
+    final budget = (map['monthlyBudget'] as num?)?.toDouble();
     // A JSON string in SQLite, a list in backup JSON. Anything but four
     // numbers falls back to the type's defaults.
     List<double>? four(Object? raw) {
@@ -94,6 +100,7 @@ class Vehicle {
       costBands: four(map['costBands']),
       icon: map['icon'] as String?,
       tankCapacity: cap != null && cap > 0 ? cap : null,
+      monthlyBudget: budget != null && budget > 0 ? budget : null,
       sortOrder: (map['sortOrder'] as num?)?.toInt() ?? 0,
       createdAt: map['createdAt'] as String? ?? '',
     );
@@ -111,6 +118,8 @@ class Vehicle {
     bool clearIcon = false,
     double? tankCapacity,
     bool clearTankCapacity = false,
+    double? monthlyBudget,
+    bool clearMonthlyBudget = false,
     int? sortOrder,
   }) {
     return Vehicle(
@@ -124,6 +133,8 @@ class Vehicle {
       icon: clearIcon ? null : (icon ?? this.icon),
       tankCapacity:
           clearTankCapacity ? null : (tankCapacity ?? this.tankCapacity),
+      monthlyBudget:
+          clearMonthlyBudget ? null : (monthlyBudget ?? this.monthlyBudget),
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt,
     );

@@ -14,6 +14,12 @@ const String kUpdateOnLaunchKey = 'fuel_update_on_launch';
 const String kUpdateLastCheckKey = 'fuel_update_last_check';
 const String kUpdateDismissedKey = 'fuel_update_dismissed';
 const String kUpdateInstallingKey = 'fuel_update_installing';
+// Mileage drop alert: the drop below average that raises it, in percent
+// (0 is off), and per vehicle the closing time of the tank last dismissed.
+const String kMileageAlertKey = 'fuel_mileage_alert_percent';
+const int kMileageAlertDefault = 15;
+String mileageAlertDismissedKey(String vehicleId) =>
+    'fuel_mileage_alert_dismissed_$vehicleId';
 
 // ── Fuel types ───────────────────────────────────────────────────────
 const String kDefaultFuelType = 'Normal';

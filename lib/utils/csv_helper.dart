@@ -62,7 +62,7 @@ Future<void> exportCsv(List<FuelLog> logs, {required String vehicleName}) async 
   await file.writeAsString(csvString);
 
   await SharePlus.instance.share(
-    ShareParams(files: [XFile(file.path)], subject: 'FuelPulse Export'),
+    ShareParams(files: [XFile(file.path)], subject: "My H'ness export"),
   );
 }
 

@@ -1,10 +1,14 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
+import '../models/attachment.dart';
 import '../models/fuel_log.dart';
+import '../models/paper.dart';
+import '../models/part.dart';
 import '../models/pump.dart';
 import '../models/service_record.dart';
 import '../models/service_type.dart';
+import '../models/trip.dart';
 import '../models/vehicle.dart';
 import '../models/workshop.dart';
 import '../theme/palettes.dart';
@@ -18,9 +22,10 @@ import 'service_reminders.dart';
 /// Sentinel validated on restore so a foreign backup file is rejected.
 const kBackupApp = 'fuelpulse';
 // v2 added pumpBrands; v3 added vehicles and moved tank capacity onto them;
-// v4 added pumps, workshops, service types, services and brand grades.
+// v4 added pumps, workshops, service types, services and brand grades;
+// v5 added trips, papers, parts and attachments (bills and photos).
 // Restore tolerates every older shape, and refuses a newer one.
-const kBackupVersion = 4;
+const kBackupVersion = 5;
 
 /// Snapshot everything worth backing up: every vehicle and all their logs
 /// (including costs), the fuel type and pump brand lists, and the settings
@@ -36,9 +41,14 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
   final workshops = await db.getWorkshops();
   final serviceTypes = await db.getServiceTypes();
   final services = await db.getEveryService();
+  final trips = await db.getEveryTrip();
+  final papers = await db.getEveryPaper();
+  final parts = await db.getEveryPart();
+  final attachments = await db.getEveryAttachment();
   final logos = brandLogos.value;
   final pictures = await picturesForBackup([
     ...logos.values,
+    for (final a in attachments) a.file,
     for (final v in vehicles)
       if (v.icon?.startsWith('file:') ?? false) v.icon!.substring(5),
   ]);
@@ -55,6 +65,11 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     'services': [
       for (final s in services) {...s.toMap(), 'typeIds': s.typeIds},
     ],
+    // From v4.0.0. Attachment files travel in 'pictures'.
+    'trips': trips.map((t) => t.toMap()).toList(),
+    'papers': papers.map((p) => p.toMap()).toList(),
+    'parts': parts.map((p) => p.toMap()).toList(),
+    'attachments': attachments.map((a) => a.toMap()).toList(),
     // The two flat lists v2.x read; a format 4 file restores from the map.
     'brandGrades': brandGrades,
     // From v3.2.0: your logos and vehicle pictures, as base64 PNGs.
@@ -88,12 +103,12 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
 Future<int> restoreBackup(Map<String, dynamic> data,
     {required bool replace}) async {
   if (data['app'] != kBackupApp || data['logs'] is! List) {
-    throw const FormatException('Not a FuelPulse backup file.');
+    throw const FormatException("Not a My H'ness backup file.");
   }
   final version = data['version'];
   if (version is int && version > kBackupVersion) {
     throw const FormatException(
-        'This backup was made by a newer FuelPulse. Update the app, then '
+        "This backup was made by a newer version of My H'ness. Update the app, then "
         'restore.');
   }
 
@@ -137,6 +152,12 @@ Future<int> restoreBackup(Map<String, dynamic> data,
   final serviceTypes =
       list('serviceTypes', ServiceType.fromMap) ?? const <ServiceType>[];
   var services = list('services', ServiceRecord.fromMap) ?? const <ServiceRecord>[];
+  // Null for a format 1 to 4 file.
+  var trips = list('trips', Trip.fromMap) ?? const <Trip>[];
+  var papers = list('papers', Paper.fromMap) ?? const <Paper>[];
+  var parts = list('parts', Part.fromMap) ?? const <Part>[];
+  var attachments =
+      list('attachments', Attachment.fromMap) ?? const <Attachment>[];
 
   final db = DatabaseHelper();
   final settings = data['settings'] is Map ? data['settings'] as Map : null;
@@ -158,11 +179,20 @@ Future<int> restoreBackup(Map<String, dynamic> data,
     if (needsDefault && !ids.contains(kDefaultVehicleId)) {
       vehicles.add(DatabaseHelper.defaultVehicle(sortOrder: vehicles.length));
     }
+    final kept = vehicles.map((v) => v.id).toSet();
+    trips = [for (final t in trips) if (kept.contains(t.vehicleId)) t];
+    papers = [for (final p in papers) if (kept.contains(p.vehicleId)) p];
+    parts = [for (final p in parts) if (kept.contains(p.vehicleId)) p];
+    attachments = _attachmentsOf(attachments, logs, services, papers);
     await db.replaceAllData(vehicles, logs,
         pumps: pumps,
         workshops: workshops,
         serviceTypes: serviceTypes,
-        services: services);
+        services: services,
+        trips: trips,
+        papers: papers,
+        parts: parts,
+        attachments: attachments);
 
     final prefs = await SharedPreferences.getInstance();
     // Pre-vehicle tank capacity belongs to the default vehicle now.
@@ -226,6 +256,10 @@ Future<int> restoreBackup(Map<String, dynamic> data,
     final known = {...deviceIds, ...newVehicles.map((v) => v.id)};
     logs = _ownedBy(logs, known);
     services = _servicesOwnedBy(services, known);
+    trips = [for (final t in trips) if (known.contains(t.vehicleId)) t];
+    papers = [for (final p in papers) if (known.contains(p.vehicleId)) p];
+    parts = [for (final p in parts) if (known.contains(p.vehicleId)) p];
+    attachments = _attachmentsOf(attachments, logs, services, papers);
     // Logs sent to the default vehicle need it to exist, even if the user
     // deleted it in favour of others. One transaction, so a failure adds
     // neither the vehicles nor the logs.
@@ -235,7 +269,11 @@ Future<int> restoreBackup(Map<String, dynamic> data,
         pumps: pumps,
         workshops: workshops,
         serviceTypes: serviceTypes,
-        services: services);
+        services: services,
+        trips: trips,
+        papers: papers,
+        parts: parts,
+        attachments: attachments);
   }
 
   await ServiceReminders.instance.rescheduleAll();
@@ -250,6 +288,21 @@ List<FuelLog> _ownedBy(List<FuelLog> logs, Set<String> known) => [
             ? l
             : l.copyWith(vehicleId: kDefaultVehicleId),
     ];
+
+/// The [attachments] whose owner is among the restored fill-ups, services
+/// and papers; the rest would point at nothing.
+List<Attachment> _attachmentsOf(List<Attachment> attachments,
+    List<FuelLog> logs, List<ServiceRecord> services, List<Paper> papers) {
+  final owners = {
+    for (final l in logs) 'fuel/${l.id}',
+    for (final s in services) 'service/${s.id}',
+    for (final p in papers) 'paper/${p.id}',
+  };
+  return [
+    for (final a in attachments)
+      if (owners.contains('${a.ownerType}/${a.ownerId}')) a,
+  ];
+}
 
 /// [services] with any vehicle id outside [known] moved to the default
 /// vehicle, as [_ownedBy] does for logs.

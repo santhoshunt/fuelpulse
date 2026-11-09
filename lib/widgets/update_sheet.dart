@@ -394,7 +394,7 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
         return [
           Text(
             'Android needs your OK first. Turn on "Allow from this source" '
-            'for FuelPulse, then come back here. You can turn it off again '
+            "for My H'ness, then come back here. You can turn it off again "
             'after updating.',
             style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.of(context).textPrimary),
           ),

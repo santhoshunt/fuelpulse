@@ -1,7 +1,7 @@
 name: fuelpulse
-description: "FuelPulse — Offline fuel fill-up tracker with km/L efficiency and brand comparison."
+description: "My H'ness: an offline logbook for fill-ups and km/L, services, trips and papers."
 publish_to: 'none'
-version: 3.2.0+13
+version: 4.0.0+14
 
 environment:
   sdk: ^3.11.0

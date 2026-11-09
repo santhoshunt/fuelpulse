@@ -89,7 +89,7 @@ class _AboutSectionState extends State<AboutSection> {
         sectionHeader('About'),
         const SizedBox(height: 4),
         Text(
-          _version == null ? 'FuelPulse' : 'FuelPulse ${versionLabel(_version!)}',
+          _version == null ? "My H'ness" : "My H'ness ${versionLabel(_version!)}",
           style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
         const SizedBox(height: 12),
@@ -105,7 +105,7 @@ class _AboutSectionState extends State<AboutSection> {
           title: Text('Check for updates on launch',
               style: TextStyle(color: AppColors.of(context).textPrimary, fontSize: 14)),
           subtitle: Text(
-              'Once a day, FuelPulse asks GitHub for a newer release. Nothing '
+              "Once a day, My H'ness asks GitHub for a newer release. Nothing "
               'downloads until you choose to.',
               style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12)),
           value: _onLaunch,

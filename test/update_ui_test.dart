@@ -228,7 +228,7 @@ void main() {
     final (installer, downloader) = await openSheet(tester, allowed: false);
     await tapInstall(tester);
     expect(find.textContaining('Android needs your OK first'), findsOneWidget);
-    expect(find.textContaining('for FuelPulse'), findsOneWidget);
+    expect(find.textContaining("for My H'ness"), findsOneWidget);
     expect(downloader.downloads, 0);
     await tester.ensureVisible(find.text('Open settings'));
     await tester.pumpAndSettle();
@@ -362,7 +362,7 @@ void main() {
 
     testWidgets('shows the installed version', (tester) async {
       await pumpAbout(tester, serviceReturning([]));
-      expect(find.text('FuelPulse v2.0.0'), findsOneWidget);
+      expect(find.text("My H'ness v2.0.0"), findsOneWidget);
     });
 
     testWidgets('a newer release opens the update sheet', (tester) async {

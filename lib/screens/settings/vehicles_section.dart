@@ -3,6 +3,7 @@ import '../../theme/app_colors.dart';
 import '../../db/database_helper.dart';
 import '../../models/vehicle.dart';
 import '../../services/service_reminders.dart';
+import '../../utils/custom_pictures.dart';
 import '../../widgets/vehicle_icon.dart';
 import '../../widgets/vehicle_picker.dart';
 import 'settings_widgets.dart';
@@ -73,7 +74,7 @@ class _VehiclesSectionState extends State<VehiclesSection> {
       ),
     );
     if (confirm != true) return false;
-    await _db.deleteVehicle(vehicle.id);
+    await deletePictureFiles(await _db.deleteVehicle(vehicle.id));
     await ServiceReminders.instance.rescheduleAll();
     if (mounted) showSettingsSnack(context, 'Deleted "${vehicle.name}".');
     await _load();
