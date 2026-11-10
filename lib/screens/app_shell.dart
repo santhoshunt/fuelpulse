@@ -63,13 +63,24 @@ class _AppShellState extends State<AppShell>
   StreamSubscription<Uri?>? _widgetTaps;
   StreamSubscription<Uri>? _notificationTaps;
 
+  Timer? _widgetsSoon;
+
+  /// Home screen widgets refresh 2 seconds after the last reload, not on
+  /// each one: drawing the spend chart is slow, and switching tabs or
+  /// saving a fill-up should not wait on it.
+  void _refreshWidgetsSoon() {
+    _widgetsSoon?.cancel();
+    _widgetsSoon = Timer(const Duration(seconds: 2), HomeWidgets.refresh);
+  }
+
   @override
   void initState() {
     super.initState();
+    _tabIn.addListener(_swapAtSplit);
     if (HomeWidgets.supported) {
       // The home screen widgets show what the app holds; keep them current.
-      _reload.addListener(HomeWidgets.refresh);
-      unawaited(HomeWidgets.refresh());
+      _reload.addListener(_refreshWidgetsSoon);
+      _refreshWidgetsSoon();
       _widgetTaps = HomeWidget.widgetClicked.listen(_openFromWidget);
       HomeWidget.initiallyLaunchedFromHomeWidget().then(_openFromWidget);
     }
@@ -77,7 +88,10 @@ class _AppShellState extends State<AppShell>
     // failures surface in Settings via DriveBackupService.lastError().
     // google_sign_in 6.x only has an Android implementation here.
     if (!kIsWeb && Platform.isAndroid) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      // A few seconds in, so this work does not take frames from the
+      // first screens and tab switches after launch.
+      Timer(const Duration(seconds: 3), () {
+        if (!mounted) return;
         unawaited(DriveBackupService().checkAndRunScheduled());
         // Restores and edits change schedules; rebuild the reminders.
         unawaited(ServiceReminders.instance.rescheduleAll());
@@ -148,7 +162,8 @@ class _AppShellState extends State<AppShell>
         await showOdometerDialog(context,
             vehicleId: v.id,
             vehicleName: v.name,
-            scanFirst: uri.queryParameters['photo'] == '1');
+            scanFirst: uri.queryParameters['photo'] == '1',
+            onChanged: () => _reload.value++);
       case 'trip':
         final t = await DatabaseHelper().activeTrip(v.id);
         if (t == null || !mounted) break;
@@ -176,6 +191,7 @@ class _AppShellState extends State<AppShell>
   void dispose() {
     _widgetTaps?.cancel();
     _notificationTaps?.cancel();
+    _widgetsSoon?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _reload.dispose();
     _garageSection.dispose();
@@ -270,14 +286,44 @@ class _AppShellState extends State<AppShell>
     ));
   }
 
+  /// The first 30% of a switch takes the old tab out; the rest brings the
+  /// new one in.
+  static const _split = 0.3;
+
+  /// The tab on screen: the one being left until the split, then the new.
+  int _shown = 0;
+
+  /// Made once, so a frame of the switch rebuilds none of them: only the
+  /// fade and the drift change while it runs.
+  late final List<Widget> _tabs = [
+    DashboardScreen(
+      reload: _reload,
+      onShowFillUp: (id) {
+        _showFillUp.value = id;
+        _select(1);
+      },
+    ),
+    FuelListScreen(reload: _reload, show: _showFillUp),
+    GarageScreen(reload: _reload, section: _garageSection),
+    AnalyticsScreen(reload: _reload),
+    const SettingsScreen(),
+  ];
+
+  /// Swaps the stack to the new tab once, at the split.
+  void _swapAtSplit() {
+    final shown = _tabIn.value < _split ? _from : _tab;
+    if (shown != _shown) setState(() => _shown = shown);
+  }
+
   void _select(int i) {
     if (i == _tab) return;
     _from = _tab;
     _dir = i > _tab ? 1 : -1;
     setState(() => _tab = i);
-    _tabIn.forward(from: 0);
     // The tab coming into view may show data another tab just changed.
-    _reload.value++;
+    // Reading it again waits until the switch is over, so the database
+    // and the sums do not take frames from the animation.
+    _tabIn.forward(from: 0).whenCompleteOrCancel(() => _reload.value++);
   }
 
   @override
@@ -288,14 +334,10 @@ class _AppShellState extends State<AppShell>
           Expanded(
             child: AnimatedBuilder(
               animation: _tabIn,
-              builder: (context, _) {
-                // The first 30% takes the old tab out; the rest brings the
-                // new one in. The stack swaps tabs at the split, so a tab
-                // keeps its state and only one shows at a time.
-                const split = 0.3;
+              builder: (context, stack) {
                 final t = _tabIn.value;
-                final leaving = t < split;
-                final p = leaving ? t / split : (t - split) / (1 - split);
+                final leaving = t < _split;
+                final p = leaving ? t / _split : (t - _split) / (1 - _split);
                 final opacity = leaving
                     ? 1 - Curves.easeIn.transform(p)
                     : Curves.easeOut.transform(p);
@@ -305,27 +347,14 @@ class _AppShellState extends State<AppShell>
                 return Opacity(
                   opacity: opacity.clamp(0.0, 1.0),
                   child: Transform.translate(
-                    offset: Offset(dx, 0),
-                    child: IndexedStack(
-                      index: leaving ? _from : _tab,
-                      children: [
-                        DashboardScreen(
-                          reload: _reload,
-                          onShowFillUp: (id) {
-                            _showFillUp.value = id;
-                            _select(1);
-                          },
-                        ),
-                        FuelListScreen(reload: _reload, show: _showFillUp),
-                        GarageScreen(
-                            reload: _reload, section: _garageSection),
-                        AnalyticsScreen(reload: _reload),
-                        const SettingsScreen(),
-                      ],
-                    ),
-                  ),
+                      offset: Offset(dx, 0), child: stack),
                 );
               },
+              // Kept out of the builder and behind a repaint boundary, so
+              // the tabs neither rebuild nor repaint while it animates.
+              child: RepaintBoundary(
+                child: IndexedStack(index: _shown, children: _tabs),
+              ),
             ),
           ),
           const UpdateBanner(),

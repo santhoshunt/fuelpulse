@@ -6,7 +6,6 @@ import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../utils/appearance_prefs.dart';
 import '../utils/constants.dart';
-import '../utils/mileage_bands.dart';
 import '../utils/page_routes.dart';
 import '../utils/vehicle_manager.dart';
 import '../widgets/option_picker.dart';
@@ -215,26 +214,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _onRestored(bool replaced) =>
       _onDataChanged(themeChanged: replaced);
 
-  /// Mileage or cost ranges for the active vehicle, saved on Done.
+  /// Mileage or cost ranges for the active vehicle; the screen saves each
+  /// change as it is made.
   Future<void> _ranges({required bool cost}) async {
     final v = await loadActiveVehicle();
     if (!mounted) return;
-    final limits = await Navigator.push<List<double>>(
-      context,
-      SmoothPageRoute(
-        page: MileageRangesScreen(
-          vehicleName: v.name,
-          vehicleId: v.id,
-          type: v.type,
-          cost: cost,
-          limits: cost ? costBandsFor(v).limits : bandsFor(v).limits,
-        ),
-      ),
-    );
-    if (limits == null) return;
-    await DatabaseHelper().updateVehicle(cost
-        ? v.copyWith(costBands: limits)
-        : v.copyWith(mileageBands: limits));
+    await Navigator.push(context,
+        SmoothPageRoute(page: MileageRangesScreen(vehicle: v, cost: cost)));
   }
 
   Future<void> _open(Widget page) async {

@@ -32,6 +32,9 @@ class GaugeCard extends StatelessWidget {
   /// A fixed From and To from Settings; null fits the scale to the values.
   final (double, double)? scale;
 
+  /// Tapping the odometer in the dial, to see its readings.
+  final VoidCallback? onOdometerTap;
+
   const GaugeCard({
     super.key,
     required this.averageKmL,
@@ -47,6 +50,7 @@ class GaugeCard extends StatelessWidget {
     this.onUpdateReading,
     this.emptyMessage,
     this.scale,
+    this.onOdometerTap,
   });
 
   /// Scale ends: 25 km/L wide on multiples of 5, centred on [centre] (the
@@ -124,8 +128,11 @@ class GaugeCard extends StatelessWidget {
                           left: 0,
                           right: 0,
                           child: Center(
-                            child: LcdOdometer(
-                                value: odometerKm!, tenths: odometerTenths),
+                            child: GestureDetector(
+                              onTap: onOdometerTap,
+                              child: LcdOdometer(
+                                  value: odometerKm!, tenths: odometerTenths),
+                            ),
                           ),
                         ),
                     ],

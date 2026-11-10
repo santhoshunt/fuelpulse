@@ -11,42 +11,63 @@ import '../widgets/period_selector.dart' show SlidingSegments;
 import '../widgets/vehicle_picker.dart' show vehicleTypeLabel;
 
 /// The five bands for one vehicle, by km/L or, with [cost], by ₹ per km: a
-/// preview bar, one row per band, and a reset to the type's defaults. Done
-/// returns the four limits (ascending for km/L, descending for ₹/km).
+/// preview bar, one row per band, and a reset to the type's defaults. The
+/// km/L screen also holds the Dashboard gauge's scale. Every change saves
+/// as it is made, like the rest of Settings.
 class MileageRangesScreen extends StatefulWidget {
-  final String vehicleName;
-  final VehicleType type;
-  final List<double> limits;
+  final Vehicle vehicle;
 
   /// Cost per km ranges: lower is better, so the limits run downwards.
   final bool cost;
 
-  /// For the km/L screen: whose Dashboard gauge scale to show and save.
-  final String? vehicleId;
-
-  const MileageRangesScreen({
-    super.key,
-    required this.vehicleName,
-    required this.type,
-    required this.limits,
-    this.cost = false,
-    this.vehicleId,
-  });
+  const MileageRangesScreen(
+      {super.key, required this.vehicle, this.cost = false});
 
   @override
   State<MileageRangesScreen> createState() => _MileageRangesScreenState();
 }
 
 class _MileageRangesScreenState extends State<MileageRangesScreen> {
-  late List<double> _limits = List.of(widget.limits);
+  late Vehicle _vehicle = widget.vehicle;
+  late List<double> _limits = List.of(
+      _cost ? costBandsFor(_vehicle).limits : bandsFor(_vehicle).limits);
 
   bool get _cost => widget.cost;
+
+  /// Shows and saves new limits.
+  Future<void> _saveLimits(List<double> limits) async {
+    setState(() => _limits = limits);
+    _vehicle = _cost
+        ? _vehicle.copyWith(costBands: limits)
+        : _vehicle.copyWith(mileageBands: limits);
+    await DatabaseHelper().updateVehicle(_vehicle);
+  }
+
+  /// Shows and saves the gauge scale; null is Auto.
+  Future<void> _saveScale((double, double)? scale) async {
+    setState(() => _custom = scale);
+    await saveGaugeScale(_vehicle.id, scale);
+  }
+
+  Future<void> _reset() async {
+    final before = List.of(_limits);
+    await _saveLimits(List.of(_cost
+        ? defaultCostBandsFor(_vehicle.type).limits
+        : defaultBandsFor(_vehicle.type).limits));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+          'Reset to ${vehicleTypeLabel(_vehicle.type).toLowerCase()} defaults'),
+      action:
+          SnackBarAction(label: 'Undo', onPressed: () => _saveLimits(before)),
+    ));
+  }
 
   /// The gauge scale Auto gives today, and the custom one (null is Auto).
   (double, double)? _auto;
   (double, double)? _custom;
 
-  bool get _hasGauge => !_cost && widget.vehicleId != null;
+  bool get _hasGauge => !_cost;
 
   @override
   void initState() {
@@ -55,7 +76,7 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
   }
 
   Future<void> _loadGauge() async {
-    final id = widget.vehicleId!;
+    final id = _vehicle.id;
     final chrono = await DatabaseHelper().getAllLogsChrono(id);
     final overall = calculateBrandEfficiency(chrono);
     final avg = overall.totalLiters > 0 ? overall.overallEfficiency : null;
@@ -110,9 +131,7 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
         ),
       ),
     );
-    if (value != null) {
-      setState(() => _custom = from ? (value, hi) : (lo, value));
-    }
+    if (value != null) await _saveScale(from ? (value, hi) : (lo, value));
   }
 
   Widget _gaugeCard(AppColors colors) {
@@ -142,8 +161,8 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
             SlidingSegments(
               labels: const ['Auto', 'Custom'],
               selected: _custom == null ? 0 : 1,
-              onTap: (i) => setState(
-                  () => _custom = i == 0 ? null : (_auto ?? (0.0, 25.0))),
+              onTap: (i) =>
+                  _saveScale(i == 0 ? null : (_auto ?? (0.0, 25.0))),
               background: Color.alphaBlend(
                   colors.textPrimary.withValues(alpha: 0.07), colors.page),
               height: 38,
@@ -246,31 +265,21 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
         ),
       ),
     );
-    if (value != null) setState(() => _limits[i] = value);
+    if (value != null) await _saveLimits(List.of(_limits)..[i] = value);
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     final b = Theme.of(context).brightness;
-    final typeName = vehicleTypeLabel(widget.type).toLowerCase();
+    final typeName = vehicleTypeLabel(_vehicle.type).toLowerCase();
     return Scaffold(
       appBar: AppBar(
-        title: Text(_cost ? 'Cost per km ranges' : 'Mileage ranges'),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              if (_hasGauge) await saveGaugeScale(widget.vehicleId!, _custom);
-              if (context.mounted) Navigator.pop(context, _limits);
-            },
-            child: const Text('Done'),
-          ),
-        ],
-      ),
+          title: Text(_cost ? 'Cost per km ranges' : 'Mileage ranges')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          Text('For ${widget.vehicleName}',
+          Text('For ${_vehicle.name}. Changes save as you make them.',
               style: TextStyle(color: colors.textSecondary, fontSize: 15)),
           const SizedBox(height: 16),
           Card(
@@ -350,9 +359,7 @@ class _MileageRangesScreenState extends State<MileageRangesScreen> {
           ],
           const SizedBox(height: 20),
           OutlinedButton(
-            onPressed: () => setState(() => _limits = List.of(_cost
-                ? defaultCostBandsFor(widget.type).limits
-                : defaultBandsFor(widget.type).limits)),
+            onPressed: _reset,
             style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(48)),
             child: Text('Reset to $typeName defaults'),

@@ -114,7 +114,7 @@ class _TripScreenState extends State<TripScreen> {
     final v = _vehicle;
     if (v == null) return;
     if (await showOdometerDialog(context,
-        vehicleId: v.id, vehicleName: v.name)) {
+        vehicleId: v.id, vehicleName: v.name, onChanged: _load)) {
       await refreshTripNotification(v.id);
       await _load();
     }

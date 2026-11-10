@@ -30,6 +30,7 @@ import 'refill_detail_screen.dart';
 import 'service_screen.dart' show dueText, latestOdometer, serviceTypeNames;
 import 'trip_screen.dart';
 import 'trip_sheets.dart';
+import 'readings_screen.dart';
 
 /// The Dashboard tab: the active vehicle's gauge card, spend tiles and the
 /// mileage of its last 12 full-tank segments.
@@ -202,9 +203,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _updateReading() async {
     final v = _vehicle;
     if (v == null) return;
-    if (await showOdometerDialog(context, vehicleId: v.id, vehicleName: v.name)) {
+    if (await showOdometerDialog(context,
+        vehicleId: v.id,
+        vehicleName: v.name,
+        onChanged: () => widget.reload.value++)) {
       widget.reload.value++;
     }
+  }
+
+  Future<void> _openReadings() async {
+    final v = _vehicle;
+    if (v == null) return;
+    await Navigator.push(
+        context,
+        SmoothPageRoute(
+            page: ReadingsScreen(vehicleId: v.id, vehicleName: v.name)));
+    widget.reload.value++;
   }
 
   Future<void> _addFirst() async {
@@ -265,6 +279,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const SizedBox(height: 14),
       GaugeCard(
         scale: _scale,
+        onOdometerTap: _openReadings,
         averageKmL: _average,
         worst: values.isEmpty ? null : values.reduce(math.min),
         last: last,

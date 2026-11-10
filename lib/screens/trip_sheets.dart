@@ -36,7 +36,9 @@ Future<Trip> endTrip(Trip t, int odometer, DateTime at) async {
   await db.untagAfter(t.id, ended.endAt!);
   await ServiceReminders.instance.cancelTrip(t.id);
   final latest = await latestOdometer(t.vehicleId);
-  if (latest == null || odometer > latest) await saveReading(t.vehicleId, odometer);
+  if (latest == null || odometer > latest) {
+    await saveReading(t.vehicleId, odometer, how: 'trip end');
+  }
   return ended;
 }
 
@@ -126,7 +128,7 @@ class _StartSheetState extends State<_StartSheet> {
     if (fill != null) await db.updateLog(fill.copyWith(tripId: t.id));
     final latest = widget.odometer;
     if (fill == null && (latest == null || km > latest)) {
-      await saveReading(widget.vehicle.id, km);
+      await saveReading(widget.vehicle.id, km, how: 'trip start');
     }
     await ServiceReminders.instance.askPermission();
     await ServiceReminders.instance.showTrip(t, widget.vehicle.name, 0);

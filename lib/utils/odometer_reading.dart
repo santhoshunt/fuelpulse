@@ -2,33 +2,99 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart' show ImageSource;
+import 'package:intl/intl.dart' show NumberFormat;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
+import '../screens/readings_screen.dart';
 import '../screens/scan_photos_screen.dart' show photoScanSupported;
+import 'page_routes.dart';
 import '../services/photo_scan.dart' show scanOdometer;
 import '../services/service_reminders.dart';
 
-/// The latest odometer you typed outside a fill-up, per vehicle. It feeds
+/// The latest odometer you entered outside a fill-up, per vehicle. It feeds
 /// today's tank estimate and the km left to a service; it is not a fill-up.
 typedef OdometerReading = ({int km, DateTime at});
 
-String _key(String vehicleId) => 'fuel_odometer_reading_$vehicleId';
+/// One entry in a vehicle's readings, with how it was entered: 'typed',
+/// 'photo', 'notification', 'trip start' or 'trip end'.
+typedef LoggedReading = ({int km, DateTime at, String how});
 
-/// The saved reading, or null. A reading below the last fill-up's odometer
-/// is stale (a fill-up came after it) and is ignored.
-Future<OdometerReading?> loadReading(String vehicleId) async {
+/// Before 4.4 only the latest reading was kept, under this key.
+String _oldKey(String vehicleId) => 'fuel_odometer_reading_$vehicleId';
+String _key(String vehicleId) => 'fuel_odometer_readings_$vehicleId';
+
+/// Readings kept per vehicle; older ones drop off.
+const _keep = 200;
+
+/// Every reading for [vehicleId], newest first.
+Future<List<LoggedReading>> loadReadings(String vehicleId) async {
   final prefs = await SharedPreferences.getInstance();
   final raw = prefs.getString(_key(vehicleId));
-  if (raw == null) return null;
+  final out = <LoggedReading>[];
   try {
-    final m = jsonDecode(raw) as Map<String, dynamic>;
-    final r = (km: (m['km'] as num).toInt(), at: DateTime.parse(m['at'] as String));
-    final last = await DatabaseHelper().getLastLog(vehicleId);
-    return last != null && r.km < last.odometer ? null : r;
+    if (raw != null) {
+      for (final m in (jsonDecode(raw) as List).cast<Map<String, dynamic>>()) {
+        out.add((
+          km: (m['km'] as num).toInt(),
+          at: DateTime.parse(m['at'] as String),
+          how: m['how'] as String? ?? 'typed',
+        ));
+      }
+    } else {
+      final old = prefs.getString(_oldKey(vehicleId));
+      if (old != null) {
+        final m = jsonDecode(old) as Map<String, dynamic>;
+        out.add((
+          km: (m['km'] as num).toInt(),
+          at: DateTime.parse(m['at'] as String),
+          how: 'typed',
+        ));
+      }
+    }
   } catch (_) {
-    return null;
+    // A damaged list reads as empty rather than stopping the app.
   }
+  out.sort((a, b) => b.at.compareTo(a.at));
+  return out;
+}
+
+Future<void> _storeReadings(String vehicleId, List<LoggedReading> list) async {
+  final prefs = await SharedPreferences.getInstance();
+  list.sort((a, b) => b.at.compareTo(a.at));
+  await prefs.setString(
+      _key(vehicleId),
+      jsonEncode([
+        for (final r in list.take(_keep))
+          {'km': r.km, 'at': r.at.toIso8601String(), 'how': r.how},
+      ]));
+  await prefs.remove(_oldKey(vehicleId));
+}
+
+/// The current reading: the newest one, or null. A reading below the last
+/// fill-up's odometer is stale (a fill-up came after it) and is ignored.
+Future<OdometerReading?> loadReading(String vehicleId) async {
+  final r = (await loadReadings(vehicleId)).firstOrNull;
+  if (r == null) return null;
+  final last = await DatabaseHelper().getLastLog(vehicleId);
+  return last != null && r.km < last.odometer ? null : (km: r.km, at: r.at);
+}
+
+/// Removes one reading; the one before it becomes current.
+Future<void> deleteReading(String vehicleId, DateTime at) async {
+  final list = await loadReadings(vehicleId)
+    ..removeWhere((r) => r.at == at);
+  await _storeReadings(vehicleId, list);
+  await ServiceReminders.instance.rescheduleAll();
+}
+
+/// Puts back a reading removed with [deleteReading].
+Future<void> restoreReading(String vehicleId, LoggedReading r) async {
+  final list = await loadReadings(vehicleId)
+    ..removeWhere((e) => e.at == r.at)
+    ..add(r);
+  await _storeReadings(vehicleId, list);
+  await ServiceReminders.instance.rescheduleAll();
 }
 
 /// Litres left now: the level right after the last refill, less what the
@@ -44,15 +110,28 @@ double? tankNow({
       .clamp(0.0, afterRefill);
 }
 
-Future<void> saveReading(String vehicleId, int km) async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setString(_key(vehicleId),
-      jsonEncode({'km': km, 'at': DateTime.now().toIso8601String()}));
+/// Adds a reading as the current one, [how] saying where it came from.
+/// Returns its time, which [deleteReading] takes to undo it.
+Future<DateTime> saveReading(String vehicleId, int km,
+    {String how = 'typed'}) async {
+  final at = DateTime.now();
+  await _storeReadings(
+      vehicleId, [(km: km, at: at, how: how), ...await loadReadings(vehicleId)]);
   await ServiceReminders.instance.checkKmDue(vehicleId, km);
   await ServiceReminders.instance.checkLowFuel(vehicleId, km);
   // Moves the weekly reading reminder past this reading.
   await ServiceReminders.instance.rescheduleAll();
+  return at;
 }
+
+/// How a reading was entered, for the Readings page.
+String readingSourceLabel(String how) => switch (how) {
+      'photo' => 'from a photo',
+      'notification' => 'from the notification',
+      'trip start' => 'at a trip start',
+      'trip end' => 'at a trip end',
+      _ => 'typed',
+    };
 
 /// Saves a reading typed as text, such as "23,456" or "23456 km", from the
 /// reminder's reply box. Uses the same checks as the reading dialog.
@@ -73,7 +152,7 @@ Future<({int? km, String? error})> saveTypedReading(
           'Type it again.'
     );
   }
-  await saveReading(vehicleId, km);
+  await saveReading(vehicleId, km, how: 'notification');
   return (km: km, error: null);
 }
 
@@ -106,13 +185,19 @@ Future<int?> pickOdometerPhoto(BuildContext context, int? last) async {
   return scanOdometer(last, source: source);
 }
 
+/// What the dialog's All readings button returns instead of a reading.
+const _openReadings = -1;
+
 /// Asks for today's odometer. Returns true when a reading was saved. With
 /// [scanFirst] (the Odometer widget's Photo button) the photo choice opens
-/// first and its reading fills the field.
+/// first and its reading fills the field. A saved reading shows Undo;
+/// [onChanged] runs after an Undo or after the Readings page closes, so the
+/// caller can show the current reading again.
 Future<bool> showOdometerDialog(BuildContext context,
     {required String vehicleId,
     required String vehicleName,
-    bool scanFirst = false}) async {
+    bool scanFirst = false,
+    VoidCallback? onChanged}) async {
   final last = await DatabaseHelper().getLastLog(vehicleId);
   final current = await loadReading(vehicleId);
   final scanned = scanFirst && photoScanSupported
@@ -126,6 +211,8 @@ Future<bool> showOdometerDialog(BuildContext context,
   String? error = scanFirst && scanned == null && photoScanSupported
       ? "Couldn't read the odometer; type it in"
       : null;
+  // The last value read from a photo, to tell a photo reading from a typed one.
+  int? fromPhoto = scanned;
   final km = await showDialog<int>(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -155,6 +242,7 @@ Future<bool> showOdometerDialog(BuildContext context,
                               error = "Couldn't read the odometer; type it in";
                             } else {
                               controller.text = '$v';
+                              fromPhoto = v;
                               error = null;
                             }
                           });
@@ -173,6 +261,9 @@ Future<bool> showOdometerDialog(BuildContext context,
           ],
         ),
         actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, _openReadings),
+              child: const Text('All readings')),
           TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Cancel')),
@@ -196,7 +287,28 @@ Future<bool> showOdometerDialog(BuildContext context,
       ),
     ),
   );
-  if (km == null) return false;
-  await saveReading(vehicleId, km);
+  if (km == null || !context.mounted) return false;
+  if (km == _openReadings) {
+    await Navigator.push(
+        context,
+        SmoothPageRoute(
+            page: ReadingsScreen(vehicleId: vehicleId, vehicleName: vehicleName)));
+    onChanged?.call();
+    return false;
+  }
+  final at = await saveReading(vehicleId, km,
+      how: km == fromPhoto ? 'photo' : 'typed');
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Saved ${NumberFormat('#,##,##0', 'en_IN').format(km)} km'),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () async {
+          await deleteReading(vehicleId, at);
+          onChanged?.call();
+        },
+      ),
+    ));
+  }
   return true;
 }

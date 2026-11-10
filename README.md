@@ -30,6 +30,7 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Bills and receipts** | Photos or PDFs on services and fill-ups, kept in backups. PDFs open in your PDF app |
 | **Checks** | Small jobs that repeat by days or km, such as tyre pressure or chain lube, on a card in Garage → Service, with a notification when one falls due. Tap the circle when done; tap the tick to mark it done again or undo |
 | **Odometer reading reminder** | A weekly notification, Sundays at 19:00 by default, with an Enter km box that saves the reading without opening the app, and a Photo button. It skips the week when a reading or fill-up came in the three days before |
+| **Readings** | Every odometer reading you enter outside a fill-up, with when and how, on a page opened from the Dashboard gauge. Delete one and the one before it becomes current; saving a reading shows Undo |
 | **Gauge scale** | The Dashboard gauge fits its scale to your fill-ups, or uses your own From and To set in Settings → Grading → Mileage ranges |
 | **Fill up full nudge** | After three partial fill-ups in a row, the Dashboard asks for a full tank so mileage can be measured again |
 | **App lock** | Fingerprint, face or phone PIN when the app opens, and again after 1 or 5 minutes away, or immediately (Settings → Security) |
