@@ -301,6 +301,8 @@ Future<bool> showOdometerDialog(BuildContext context,
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Saved ${NumberFormat('#,##,##0', 'en_IN').format(km)} km'),
+      persist: false,
+      duration: const Duration(seconds: 6),
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () async {

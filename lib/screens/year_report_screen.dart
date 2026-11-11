@@ -210,6 +210,8 @@ class _YearReportScreenState extends State<YearReportScreen> {
                           fontSize: 38,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.5)),
+                  const Text('driven',
+                      style: TextStyle(color: light, fontSize: 13)),
                   const SizedBox(height: 10),
                   line('Fuel',
                       '₹${_grouped.format(fuelSpend)} · ${litres.toStringAsFixed(0)} L'),

@@ -6,10 +6,11 @@ import '../models/attachment.dart';
 import '../models/paper.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
-import '../utils/custom_pictures.dart';
 import '../widgets/bills_section.dart';
 import '../widgets/option_picker.dart';
 import 'settings/settings_widgets.dart';
+import '../utils/undo_delete.dart';
+import '../widgets/discard_guard.dart';
 
 final _day = DateFormat('yyyy-MM-dd');
 final _shown = DateFormat('d MMM y');
@@ -25,7 +26,7 @@ class PaperFormScreen extends StatefulWidget {
   State<PaperFormScreen> createState() => _PaperFormScreenState();
 }
 
-class _PaperFormScreenState extends State<PaperFormScreen> {
+class _PaperFormScreenState extends State<PaperFormScreen> with DiscardGuard {
   final _db = DatabaseHelper();
   late final Paper? _p = widget.paper;
   late String _kind = _p?.kind ?? 'insurance';
@@ -43,9 +44,13 @@ class _PaperFormScreenState extends State<PaperFormScreen> {
   void initState() {
     super.initState();
     final p = _p;
-    if (p != null) {
+    if (p == null) {
+      markClean();
+    } else {
       _db.getAttachments('paper', p.id).then((a) {
-        if (mounted) setState(() => _photos = _photosBefore = a);
+        if (!mounted) return;
+        setState(() => _photos = _photosBefore = a);
+        markClean();
       });
     }
   }
@@ -114,12 +119,19 @@ class _PaperFormScreenState extends State<PaperFormScreen> {
   }
 
   Future<void> _delete() async {
-    final ok = await confirmListDelete(context, _p!.displayName,
-        'Its photos are deleted too. This cannot be undone.');
-    if (!ok) return;
-    await deletePictureFiles(await _db.deletePaper(_p.id));
-    await ServiceReminders.instance.rescheduleAll();
-    if (mounted) Navigator.pop(context, true);
+    final p = _p!;
+    final navigator = Navigator.of(context);
+    await deleteWithUndo(
+      context,
+      message: '${p.displayName} deleted',
+      rows: {
+        'papers': ('id = ?', [p.id]),
+        'attachments': attachmentsOf('paper', p.id),
+      },
+      delete: () => _db.deletePaper(p.id),
+      changed: ServiceReminders.instance.rescheduleAll,
+    );
+    navigator.pop(true);
   }
 
   Widget _dateField(String label, DateTime? value, VoidCallback onTap,
@@ -148,7 +160,12 @@ class _PaperFormScreenState extends State<PaperFormScreen> {
       );
 
   @override
-  Widget build(BuildContext context) {
+  String formSnapshot() => [_kind, _title.text, _number.text, _notes.text, _issued, _expires, _remindDays, for (final a in _photos) a.id].join('|');
+
+  @override
+  Widget build(BuildContext context) => guard(_page(context));
+
+  Widget _page(BuildContext context) {
     final colors = AppColors.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(_p == null ? 'Add paper' : 'Edit paper')),
@@ -173,7 +190,8 @@ class _PaperFormScreenState extends State<PaperFormScreen> {
           TextField(
             controller: _title,
             decoration: const InputDecoration(
-                labelText: 'Name (optional)', hintText: 'Acko, Bajaj Allianz'),
+                labelText: 'Issued by (optional)',
+                hintText: 'Acko, Bajaj Allianz'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -208,7 +226,7 @@ class _PaperFormScreenState extends State<PaperFormScreen> {
             decoration: const InputDecoration(labelText: 'Notes (optional)'),
           ),
           const SizedBox(height: 24),
-          sectionHeader('Photos (optional)'),
+          sectionHeader('Bills and photos (optional)'),
           const SizedBox(height: 12),
           BillsSection(
             ownerType: 'paper',

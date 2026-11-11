@@ -21,6 +21,7 @@ import '../widgets/option_picker.dart';
 import 'pumps_screen.dart';
 import 'scan_photos_screen.dart';
 import 'trip_sheets.dart';
+import '../widgets/discard_guard.dart';
 
 /// Add or edit a fill-up. One form serves both so the fields, cost sync and
 /// pickers stay identical between the two flows.
@@ -43,7 +44,7 @@ class EntryFormScreen extends StatefulWidget {
   State<EntryFormScreen> createState() => _EntryFormScreenState();
 }
 
-class _EntryFormScreenState extends State<EntryFormScreen> {
+class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
   final _db = DatabaseHelper();
   final _formKey = GlobalKey<FormState>();
 
@@ -174,6 +175,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       });
       // Before the scan, so a scanned price wins.
       await _applyPumpPrice();
+      // As opened: values from a photo scan count as edits to keep.
+      markClean();
       // After the base odometer is known: a TRIP read needs it.
       final prefill = widget.prefill;
       if (prefill != null && !prefill.isEmpty) _applyOutcome(prefill);
@@ -232,6 +235,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       _selectedFuelType = log.fuelType;
       _loading = false;
     });
+    markClean();
   }
 
   @override
@@ -304,7 +308,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       _odoFromPhoto = true;
       if (o.isTrip) {
         return 'The photo showed ${o.label}, which counts distance since the '
-            'last refill, so the form switched to KM Travelled. Odometer '
+            'last fill-up, so the form switched to Distance. Odometer '
             'becomes $_baseOdometer + ${o.value} = '
             '${_baseOdometer! + o.value!} km.';
       }
@@ -316,11 +320,11 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       // recomputes the total.
       _priceController.text = p.rate!.toStringAsFixed(2);
       if (pumpSuggestion(p) != null) {
-        return 'Only the rate was read for sure: ₹${p.rate!.toStringAsFixed(2)}/L. '
-            'Check this, under the price, works out the litres.';
+        return 'Only the price was read: ₹${p.rate!.toStringAsFixed(2)}/L. '
+            'The Check this box under the price works out the litres.';
       }
-      return 'Only the rate was read: ₹${p.rate!.toStringAsFixed(2)}/L. '
-          'Enter litres or the total and the other fills in.';
+      return 'Only the price was read: ₹${p.rate!.toStringAsFixed(2)}/L. '
+          'Enter the litres or the total and the other fills in.';
     }
     if (!p.found) {
       return pumpSuggestion(p) == null
@@ -337,8 +341,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     _fuelFromPhoto = true;
     if (p.corrections > 0) {
       return 'Fixed ${p.corrections} misread '
-          '${p.corrections == 1 ? 'digit' : 'digits'} so litres × rate '
-          'matches the amount. Check them against the pump before saving.';
+          '${p.corrections == 1 ? 'digit' : 'digits'} so litres × price '
+          'matches the total. Check them against the pump before saving.';
     }
     return null;
   }
@@ -469,7 +473,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Text(
-              "The pump numbers didn't agree. If the amount and rate are "
+              "The pump numbers didn't agree. If the total and price are "
               'right, ₹${s.amount.toStringAsFixed(2)} ÷ '
               '₹${s.rate.toStringAsFixed(2)} = $litres L.',
               style: TextStyle(color: colors.textSecondary, fontSize: 13)),
@@ -544,7 +548,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   String? _validateOptionalMoney(String? v) {
     if (v == null || v.trim().isEmpty) return null;
     final val = double.tryParse(v.trim());
-    if (val == null || val < 0) return 'Invalid';
+    if (val == null || val < 0) return 'Enter an amount in rupees';
     return null;
   }
 
@@ -761,7 +765,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
       debugPrint('Error saving entry: $e');
       if (mounted) {
         setState(() => _saving = false);
-        _showSnack('Failed to save: $e');
+        debugPrint('Fill-up save failed: $e');
+        _showSnack("Couldn't save the fill-up. Try again.");
       }
     }
   }
@@ -770,8 +775,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Save Changes'),
-            content: const Text('Save changes to this entry?'),
+            title: const Text('Save changes'),
+            content: const Text('Save the changes to this fill-up?'),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
@@ -792,7 +797,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
     return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Odometer Warning'),
+            title: const Text('Odometer looks wrong'),
             content: Text(message),
             actions: [
               TextButton(
@@ -800,7 +805,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   child: const Text('Cancel')),
               ElevatedButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Save Anyway')),
+                  child: const Text('Save anyway')),
             ],
           ),
         ) ??
@@ -871,9 +876,14 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  String formSnapshot() => [_when.toIso8601String(), _isKmMode, _odoController.text, _litersController.text, _priceController.text, _costController.text, _notesController.text, _fullTank, _selectedBrand, _selectedFuelType, _pump?.id, _onTrip, _tripEndsHere, for (final b in _bills) b.id].join('|');
+
+  @override
+  Widget build(BuildContext context) => guard(_page(context));
+
+  Widget _page(BuildContext context) {
     final colors = AppColors.of(context);
-    final action = _isEdit ? 'Edit Fill-up' : 'Add Fill-up';
+    final action = _isEdit ? 'Edit fill-up' : 'Add fill-up';
     final title = _vehicle == null ? action : '$action · ${_vehicle!.name}';
 
     if (_loading) {
@@ -929,7 +939,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 keyboardType: TextInputType.number,
                 onChanged: (_) => setState(() => _odoFromPhoto = false),
                 decoration: InputDecoration(
-                  labelText: _isKmMode ? 'KM Driven' : 'Odometer (km)',
+                  labelText:
+                      _isKmMode ? 'Distance since last fill-up' : 'Odometer',
                   prefixIcon: const Icon(Icons.speed),
                   suffixText: 'km',
                   helperText: _odoFromPhoto ? 'From photo, check it' : null,
@@ -937,11 +948,11 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
                     return _isKmMode
-                        ? 'Enter distance driven'
-                        : 'Enter odometer reading';
+                        ? 'Enter the distance since your last fill-up'
+                        : 'Enter the odometer reading';
                   }
                   final n = int.tryParse(v.trim());
-                  if (n == null) return 'Invalid number';
+                  if (n == null) return 'Enter whole km, like 12340';
                   // A negative distance would save an odometer below the
                   // last reading, skipping the backward-odometer warning.
                   if (_isKmMode && n < 0) return "Distance can't be negative";
@@ -953,8 +964,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   padding: const EdgeInsets.only(top: 6, left: 4),
                   child: Text(
                     _isEdit
-                        ? 'Previous odometer: $_baseOdometer km'
-                        : 'Last odometer: $_baseOdometer km',
+                        ? 'Fill-up before this one at $_baseOdometer km'
+                        : 'Last fill-up at $_baseOdometer km',
                     style: note,
                   ),
                 )
@@ -965,8 +976,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),
                   child: Text(
-                    'Last reading $_baseOdometer km, so '
-                    '${odo - _baseOdometer!} km since the last refill.',
+                    'Last fill-up at $_baseOdometer km, so '
+                    '${odo - _baseOdometer!} km since then.',
                     style: note,
                   ),
                 ),
@@ -1023,7 +1034,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                   if (_fuelFromPhoto) setState(() => _fuelFromPhoto = false);
                 },
                 decoration: InputDecoration(
-                  labelText: 'Liters',
+                  labelText: 'Litres',
                   prefixIcon: const Icon(Icons.local_gas_station),
                   suffixText: 'L',
                   helperText: _fuelFromPhoto
@@ -1031,9 +1042,9 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                       : null,
                 ),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Enter liters';
+                  if (v == null || v.trim().isEmpty) return 'Enter the litres';
                   final val = double.tryParse(v.trim());
-                  if (val == null || val <= 0) return 'Must be > 0';
+                  if (val == null || val <= 0) return 'Enter litres above 0';
                   return null;
                 },
               ),
@@ -1100,9 +1111,19 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                           color: colors.textSecondary, size: 20),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text('Full Tank',
-                            style: TextStyle(
-                                color: colors.textPrimary, fontSize: 15)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Full tank',
+                                style: TextStyle(
+                                    color: colors.textPrimary, fontSize: 15)),
+                            Text(
+                                'Filled to the top. Mileage is measured from '
+                                'one full fill to the next.',
+                                style: TextStyle(
+                                    color: colors.textSecondary, fontSize: 12)),
+                          ],
+                        ),
                       ),
                       Switch(
                         value: _fullTank,
@@ -1143,7 +1164,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                 ),
               ],
 
-              _section('Receipts (optional)', colors),
+              _section('Bills and photos (optional)', colors),
               BillsSection(
                 ownerType: 'fuel',
                 items: _bills,
@@ -1170,7 +1191,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> {
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(_isEdit ? 'Save Changes' : 'Save Entry',
+                      : Text(_isEdit ? 'Save changes' : 'Save fill-up',
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w600)),
                 ),

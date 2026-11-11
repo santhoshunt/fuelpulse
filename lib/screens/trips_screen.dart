@@ -189,18 +189,32 @@ class _TripsScreenState extends State<TripsScreen> {
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Expanded(
-                          child: Text('${_grouped.format(km)} km',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Distance', style: muted),
+                            Text('${_grouped.format(km)} km',
+                                style: TextStyle(
+                                    color: colors.textPrimary,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text('Fuel used (estimate)', style: muted),
+                          Text('₹${_grouped.format(spend)}',
                               style: TextStyle(
                                   color: colors.textPrimary,
                                   fontSize: 22,
-                                  fontWeight: FontWeight.w700))),
-                      Text('₹${_grouped.format(spend)}',
-                          style: TextStyle(
-                              color: colors.textPrimary,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700)),
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
                     ],
                   ),
                   if (litres > 0)

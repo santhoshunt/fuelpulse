@@ -152,7 +152,7 @@ class HomeWidgets {
           ? ''
           : left != null
               ? 'about ${(left * avg).round()} km, from your reading'
-              : 'about ${(after! * avg).round()} km after the last refill',
+              : 'about ${(after! * avg).round()} km after the last fill-up',
       'tank_percent': tank == null || cap <= 0 ? 0 : (tank / cap * 100).round(),
       'service_title': next == null
           ? 'Nothing scheduled'

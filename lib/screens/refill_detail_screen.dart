@@ -7,13 +7,13 @@ import '../models/pump.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
-import '../utils/custom_pictures.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/mileage_bands.dart';
 import '../utils/page_routes.dart';
 import '../utils/tank_level_calculator.dart';
 import '../widgets/brand_logo.dart';
 import 'entry_form_screen.dart';
+import '../utils/undo_delete.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 final _money = NumberFormat('#,##,##0.00', 'en_IN');
@@ -79,31 +79,12 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
     await _load();
   }
 
+  /// Deletes at once and closes the page; Undo shows on the list behind it.
   Future<void> _delete() async {
     final log = _log!;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Entry'),
-        content: Text(
-            'Delete the fill-up on ${log.odometer} km? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.of(ctx).danger,
-                foregroundColor: Colors.white),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await deletePictureFiles(await _db.deleteLog(log.id));
-    if (mounted) Navigator.pop(context, true);
+    final navigator = Navigator.of(context);
+    await deleteFillUpWithUndo(context, log);
+    navigator.pop(true);
   }
 
   @override
@@ -111,7 +92,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
     final colors = AppColors.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Refill'),
+        title: const Text('Fill-up'),
         centerTitle: true,
         actions: [
           if (_log != null)
@@ -209,35 +190,57 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
           ),
         ),
       ),
-      _section('Refill', colors),
+      _section('Fuel', colors),
       _group(colors, [
         if (_pump?.name.isNotEmpty ?? false) ('Petrol pump', _pump!.name),
         ('Fuel grade', log.fuelType),
-        ('Odometer', '${_grouped.format(log.odometer)} km'),
         ('Litres', '${log.liters.toStringAsFixed(2)} L'),
-        if (price != null) ('Price', '₹${price.toStringAsFixed(2)} / L'),
-        if (total != null) ('Total', '₹${_money.format(total)}'),
-        ('Fill', log.fullTank ? 'Full tank' : 'Partial'),
+        if (price != null)
+          ('Price per litre', '₹${price.toStringAsFixed(2)}'),
+        if (total != null) ('Total paid', '₹${_money.format(total)}'),
+        ('Tank', log.fullTank ? 'Filled to the top' : 'Topped up'),
+      ]),
+      _section('Distance', colors),
+      _group(colors, [
+        ('Odometer', '${_grouped.format(log.odometer)} km'),
+        (
+          'Driven before this fill-up',
+          _previous == null
+              ? 'First fill-up'
+              : '${_grouped.format(log.odometer - _previous!.odometer)} km '
+                  'since ${_day(_previous!)}'
+        ),
+        (
+          'Driven on this fill-up',
+          _next == null
+              ? 'Shown after the next fill-up'
+              : '${_grouped.format(_next!.odometer - log.odometer)} km '
+                  'to ${_day(_next!)}'
+        ),
       ]),
       _section('Mileage', colors),
       _group(colors, [
-        (
-          'Distance since last refill',
-          _previous == null
-              ? 'First refill'
-              : '${_grouped.format(log.odometer - _previous!.odometer)} km'
-        ),
-        (
-          'Distance on this fuel',
-          _next == null
-              ? 'After next refill'
-              : '${_grouped.format(_next!.odometer - log.odometer)} km'
-        ),
-        if (price != null && kmL != null && kmL > 0)
-          ('Cost per km', '₹${(price / kmL).toStringAsFixed(2)}'),
+        if (!log.fullTank)
+          ('Mileage', 'Counts towards the next full tank')
+        else ...[
+          (
+            'Mileage',
+            kmL == null
+                ? 'Shown after the next full tank'
+                : '${kmL.toStringAsFixed(1)} km/L'
+          ),
+          if (_eff?.segmentDistance != null)
+            (
+              'Measured over',
+              '${_grouped.format(_eff!.segmentDistance!.round())} km, '
+                  'full tank to full tank'
+            ),
+          if (price != null && kmL != null && kmL > 0)
+            ('Fuel cost per km', '₹${(price / kmL).toStringAsFixed(2)}'),
+        ],
       ]),
       if (_tankLevel != null && cap > 0) ...[
-        _section('Tank', colors),
+        _section('Tank after this fill-up', colors),
         Card(
           margin: EdgeInsets.zero,
           child: Padding(
@@ -248,7 +251,7 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
                 Row(
                   children: [
                     Expanded(
-                        child: Text('Estimated level after refill',
+                        child: Text('Estimated level',
                             style: TextStyle(
                                 color: colors.textPrimary, fontSize: 16))),
                     Text(
@@ -292,9 +295,14 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
           side: BorderSide(color: colors.danger.withValues(alpha: 0.35)),
           minimumSize: const Size.fromHeight(48),
         ),
-        child: const Text('Delete refill'),
+        child: const Text('Delete fill-up'),
       ),
     ];
+  }
+
+  String _day(FuelLog l) {
+    final at = DateTime.tryParse(l.timestamp);
+    return at == null ? '' : DateFormat('d MMM').format(at);
   }
 
   Widget _section(String title, AppColors colors) => Padding(

@@ -29,6 +29,23 @@ Future<void> setActiveVehicle(String id) async {
   await prefs.setString(kActiveVehicleKey, id);
 }
 
+/// Removes what a vehicle keeps in settings rather than the database: its
+/// odometer readings and gauge scale. With no [vehicleId] (a data wipe),
+/// every vehicle's, plus the checks' undo entries.
+Future<void> clearVehicleExtras([String? vehicleId]) async {
+  final prefs = await SharedPreferences.getInstance();
+  bool ours(String k) => vehicleId == null
+      ? k.startsWith('fuel_odometer_reading') ||
+          k.startsWith('fuel_gauge_scale_') ||
+          k.startsWith('fuel_check_undo_')
+      : k == 'fuel_odometer_readings_$vehicleId' ||
+          k == 'fuel_odometer_reading_$vehicleId' ||
+          k == 'fuel_gauge_scale_$vehicleId';
+  for (final k in prefs.getKeys().where(ours).toList()) {
+    await prefs.remove(k);
+  }
+}
+
 /// Before v2.0.0 tank capacity was one global preference. Moves it onto the
 /// default vehicle once, unless that vehicle already has a capacity, then
 /// removes the preference. Kept out of the SQL migration so the schema

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 /// Prompt for a name (fuel type or pump brand). Returns the typed text, or
 /// null on cancel. Used by both entry screens and the Settings managers.
 Future<String?> showAddFuelTypeDialog(BuildContext context,
-    {String title = 'Add Fuel Type',
+    {String title = 'Add fuel grade',
     String? initial,
     String hint = 'e.g. XP-95'}) {
   final controller = TextEditingController(text: initial ?? '');

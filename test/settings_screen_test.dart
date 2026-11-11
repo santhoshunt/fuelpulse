@@ -75,7 +75,7 @@ void main() {
       'Vehicles',
       'Petrol pumps',
       'About',
-      'Danger Zone',
+      'Danger zone',
     ]) {
       await tester.scrollUntilVisible(find.text(header), 200,
           scrollable: _page);
@@ -83,7 +83,7 @@ void main() {
     }
     // Backups and CSV moved to their own page.
     await _tapVisible(tester, find.text('Import and export'));
-    expect(find.text('Data Management'), findsOneWidget);
+    expect(find.text('Fill-ups and backup'), findsOneWidget);
   });
 
   /// Settings → Petrol pumps → Brands and fuel grades.
@@ -139,15 +139,15 @@ void main() {
     });
     await _pumpSettings(tester);
 
-    await _tapVisible(tester, find.text('Danger Zone'));
+    await _tapVisible(tester, find.text('Danger zone'));
     expect(find.textContaining('Type DELETE to confirm'), findsOneWidget);
 
-    await _tapVisible(tester, find.text('Delete All Data'));
+    await _tapVisible(tester, find.text('Delete all data'));
     expect(await _real(tester, _db.getLogCount), 1);
 
     await tester.enterText(
         find.widgetWithText(TextFormField, 'Type DELETE'), 'DELETE');
-    await _tapVisible(tester, find.text('Delete All Data'));
+    await _tapVisible(tester, find.text('Delete all data'));
     expect(await _real(tester, _db.getLogCount), 0);
     // Every vehicle goes, and one default vehicle is left to log into.
     expect((await _real(tester, _db.getVehicles)).map((v) => v.id),

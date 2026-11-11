@@ -202,6 +202,7 @@ class _UpdateSheetState extends State<UpdateSheet> with WidgetsBindingObserver {
     messenger.showSnackBar(SnackBar(
       content: Text(problem),
       duration: const Duration(seconds: 8),
+      persist: false,
       action: SnackBarAction(
         label: 'Release page',
         onPressed: () => openReleasePage(option.pageUrl),

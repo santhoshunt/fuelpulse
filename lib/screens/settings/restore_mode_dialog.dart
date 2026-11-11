@@ -9,11 +9,9 @@ Future<String?> showRestoreModeDialog(BuildContext context,
     builder: (ctx) => AlertDialog(
       title: Text(title),
       content: Text(
-        'Merge adds backup vehicles and entries not already on this device '
-        '(matched by id). Replace deletes your current vehicles and '
-        '$currentCount ${currentCount == 1 ? 'entry' : 'entries'}, then '
-        "restores the backup's vehicles, entries, settings, fuel types and "
-        'pump brands.',
+        "Merge adds what this phone doesn't already have. Replace deletes "
+        'the data on this phone, including $currentCount '
+        "${currentCount == 1 ? 'fill-up' : 'fill-ups'}, then restores the backup.",
       ),
       actions: [
         TextButton(

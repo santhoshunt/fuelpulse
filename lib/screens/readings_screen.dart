@@ -43,6 +43,8 @@ class _ReadingsScreenState extends State<ReadingsScreen> {
           ? 'Deleted ${_grouped.format(r.km)} km'
           : 'Deleted ${_grouped.format(r.km)} km. '
               'Now ${_grouped.format(next.km)} km.'),
+      persist: false,
+      duration: const Duration(seconds: 6),
       action: SnackBarAction(
         label: 'Undo',
         onPressed: () async {
@@ -85,7 +87,9 @@ class _ReadingsScreenState extends State<ReadingsScreen> {
                 if (list.isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 48),
-                    child: Text('No readings yet.',
+                    child: Text(
+                        'No readings yet. Tap Enter odometer reading on the '
+                        'Dashboard to add one.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             color: colors.textPrimary, fontSize: 16)),

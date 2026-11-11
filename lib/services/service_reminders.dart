@@ -322,6 +322,7 @@ class ServiceReminders {
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             title: 'Service due today · ${v.name}',
             body: _names(r, types),
+            payload: 'fuelpulse://service',
           );
         }
         for (final p in await db.getPapers(v.id)) {
@@ -340,11 +341,12 @@ class ServiceReminders {
             scheduledDate: tz.TZDateTime.from(at.toUtc(), tz.UTC),
             notificationDetails: _renewals,
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-            title: '${p.displayName} renews on '
+            title: '${p.displayName} expires on '
                 '${DateFormat('d MMM').format(exp)} · ${v.name}',
             body: p.number.isEmpty
-                ? 'Renew it before it lapses.'
-                : '${p.number}: renew it before it lapses.',
+                ? 'Renew it before then.'
+                : '${p.number}: renew it before then.',
+            payload: 'fuelpulse://papers',
           );
         }
         for (final p in await db.getParts(v.id)) {
@@ -365,6 +367,7 @@ class ServiceReminders {
             title: '${p.label} due for a change · ${v.name}',
             body: 'Fitted ${DateFormat('d MMM y').format(DateTime.parse(p.fittedAt))}, '
                 'good for ${p.lifeMonths} months.',
+            payload: 'fuelpulse://service',
           );
         }
         for (final c in await db.getChecks(v.id)) {
@@ -531,6 +534,7 @@ class ServiceReminders {
           body: '${_names(r, types)}: due at ${km.format(due)} km, '
               'now ${km.format(odometer)} km',
           notificationDetails: _details,
+          payload: 'fuelpulse://service',
         );
         await prefs.setBool(key, true);
       }
@@ -548,6 +552,7 @@ class ServiceReminders {
           body: 'Good for ${km.format(life)} km from ${km.format(p.fittedOdometer)}, '
               'now ${km.format(odometer)} km',
           notificationDetails: _renewals,
+          payload: 'fuelpulse://service',
         );
         await prefs.setBool(key, true);
       }

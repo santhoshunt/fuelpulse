@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../db/database_helper.dart';
 import '../../utils/constants.dart';
 import 'settings_widgets.dart';
+import '../../utils/vehicle_manager.dart';
 
 class DangerSection extends StatefulWidget {
   /// Called after the wipe, so Settings stops listing deleted vehicles.
@@ -29,6 +30,7 @@ class _DangerSectionState extends State<DangerSection> {
     // Every vehicle goes too; one default vehicle is left so the app always
     // has somewhere to log the next fill-up.
     await _db.resetToDefaultVehicle();
+    await clearVehicleExtras();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(kActiveVehicleKey);
     await widget.onDeleted();
@@ -65,7 +67,7 @@ class _DangerSectionState extends State<DangerSection> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Danger Zone',
+                    'Danger zone',
                     style: TextStyle(
                       color: AppColors.of(context).danger,
                       fontWeight: FontWeight.w600,
@@ -89,8 +91,11 @@ class _DangerSectionState extends State<DangerSection> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Deletes every vehicle and fill-up. Type DELETE to confirm '
-                  'data wipe:',
+                  'Deletes all your data: every vehicle with its fill-ups, '
+                  'odometer readings, services, trips, papers, tyres and '
+                  'battery, checks, bills and photos, and your pumps, '
+                  'workshops and service types. Your settings stay. Type '
+                  'DELETE to confirm.',
                   style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13),
                 ),
                 const SizedBox(height: 8),
@@ -110,7 +115,7 @@ class _DangerSectionState extends State<DangerSection> {
                       backgroundColor: AppColors.of(context).danger,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text('Delete All Data',
+                    child: const Text('Delete all data',
                         style: TextStyle(fontWeight: FontWeight.w600)),
                   ),
                 ),

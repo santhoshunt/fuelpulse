@@ -8,7 +8,7 @@ import '../db/database_helper.dart';
 import '../models/check.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
-import 'settings/settings_widgets.dart' show confirmListDelete;
+import '../utils/undo_delete.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
@@ -33,7 +33,14 @@ class _ChecksCardState extends State<ChecksCard> {
   @override
   void initState() {
     super.initState();
+    dataRestored.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    dataRestored.removeListener(_load);
+    super.dispose();
   }
 
   @override
@@ -340,13 +347,20 @@ class _CheckDialogState extends State<_CheckDialog> {
 
   Future<void> _delete() async {
     final c = widget.check!;
-    if (!await confirmListDelete(context, c.name, 'This cannot be undone.')) {
-      return;
-    }
-    await DatabaseHelper().deleteCheck(c.id);
-    await (await SharedPreferences.getInstance())
-        .remove(_ChecksCardState._undoKey(c.id));
-    if (mounted) Navigator.pop(context, true);
+    final navigator = Navigator.of(context);
+    await deleteWithUndo(
+      context,
+      message: '${c.name} deleted',
+      rows: {
+        'checks': ('id = ?', [c.id]),
+      },
+      delete: () async {
+        await DatabaseHelper().deleteCheck(c.id);
+        return const [];
+      },
+      changed: ServiceReminders.instance.rescheduleAll,
+    );
+    navigator.pop(true);
   }
 
   @override

@@ -9,11 +9,12 @@ import '../models/workshop.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../widgets/bills_section.dart';
-import '../utils/custom_pictures.dart';
 import '../widgets/option_picker.dart';
 import 'service_types_screen.dart';
 import 'settings/settings_widgets.dart';
 import 'workshops_screen.dart';
+import '../utils/undo_delete.dart';
+import '../widgets/discard_guard.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 final _dueDate = DateFormat('yyyy-MM-dd');
@@ -30,19 +31,23 @@ class ServiceFormScreen extends StatefulWidget {
   /// Pre-filled odometer for a new record: the latest known reading.
   final int? odometer;
 
+  /// Opens scrolled to the Next service section ("Change due date").
+  final bool toSchedule;
+
   const ServiceFormScreen({
     super.key,
     required this.vehicleId,
     this.record,
     this.presetTypeIds = const [],
     this.odometer,
+    this.toSchedule = false,
   });
 
   @override
   State<ServiceFormScreen> createState() => _ServiceFormScreenState();
 }
 
-class _ServiceFormScreenState extends State<ServiceFormScreen> {
+class _ServiceFormScreenState extends State<ServiceFormScreen> with DiscardGuard {
   final _db = DatabaseHelper();
   final _formKey = GlobalKey<FormState>();
   late final ServiceRecord? _r = widget.record;
@@ -108,7 +113,21 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       _bills = _billsBefore = bills;
       _prefillIntervals();
     });
+    markClean();
+    if (widget.toSchedule) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final at = _scheduleKey.currentContext;
+        if (at != null && at.mounted) {
+          Scrollable.ensureVisible(at,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic);
+        }
+      });
+    }
   }
+
+  /// The Next service heading, to scroll to for [ServiceFormScreen.toSchedule].
+  final _scheduleKey = GlobalKey();
 
   /// The shortest interval among the ticked types.
   void _prefillIntervals() {
@@ -226,33 +245,28 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
   }
 
   Future<void> _delete() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete service?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.of(ctx).danger,
-                foregroundColor: Colors.white),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final id = _r!.id;
+    final navigator = Navigator.of(context);
+    await deleteWithUndo(
+      context,
+      message: 'Service deleted',
+      rows: {
+        'services': ('id = ?', [id]),
+        'attachments': attachmentsOf('service', id),
+      },
+      delete: () => _db.deleteService(id),
+      changed: ServiceReminders.instance.rescheduleAll,
     );
-    if (ok != true) return;
-    await deletePictureFiles(await _db.deleteService(_r!.id));
-    await ServiceReminders.instance.rescheduleAll();
-    if (mounted) Navigator.pop(context, true);
+    navigator.pop(true);
   }
 
   @override
-  Widget build(BuildContext context) {
+  String formSnapshot() => [_when.toIso8601String(), _odo.text, _cost.text, _notes.text, _everyKm.text, _everyMonths.text, ...(_types.toList()..sort()), _workshopId, _schedule, for (final b in _bills) b.id].join('|');
+
+  @override
+  Widget build(BuildContext context) => guard(_page(context));
+
+  Widget _page(BuildContext context) {
     final colors = AppColors.of(context);
     final note = TextStyle(color: colors.textSecondary, fontSize: 12);
     final workshop = _workshops.where((w) => w.id == _workshopId).firstOrNull;
@@ -333,11 +347,11 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
                 final s = v?.trim() ?? '';
                 if (s.isEmpty) return null;
                 final n = double.tryParse(s);
-                return n == null || n < 0 ? 'Invalid' : null;
+                return n == null || n < 0 ? 'Enter an amount in rupees' : null;
               },
             ),
             const SizedBox(height: 24),
-            sectionHeader('Bills (optional)'),
+            sectionHeader('Bills and photos (optional)'),
             const SizedBox(height: 12),
             BillsSection(
               ownerType: 'service',
@@ -345,7 +359,7 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
               onChanged: (l) => setState(() => _bills = l),
             ),
             const SizedBox(height: 24),
-            sectionHeader('Next service'),
+            KeyedSubtree(key: _scheduleKey, child: sectionHeader('Next service')),
             const SizedBox(height: 4),
             SwitchListTile(
               contentPadding: const EdgeInsets.only(left: 4),

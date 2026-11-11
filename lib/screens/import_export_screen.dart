@@ -62,7 +62,7 @@ class ImportExportScreen extends StatelessWidget {
           settingsGroup([
             SettingsRow(
               icon: Icons.route_outlined,
-              label: 'Trips (CSV)',
+              label: 'Export trips (CSV)',
               onTap: () async {
                 try {
                   final n = await exportTripsCsv();
@@ -96,7 +96,7 @@ class ImportExportScreen extends StatelessWidget {
           // google_sign_in 6.x only has an Android implementation here.
           if (!kIsWeb && Platform.isAndroid) ...[
             const SizedBox(height: 32),
-            sectionHeader('Google Drive Backup'),
+            sectionHeader('Google Drive backup'),
             const SizedBox(height: 12),
             DriveBackupSection(onRestored: onRestored),
           ],

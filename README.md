@@ -20,22 +20,23 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 
 | Feature | Description |
 |---|---|
-| **Dashboard** | A speedometer-style gauge with the needle on your average km/L, the odometer on a seven-segment display, fuel left after the last refill with the range it gives, worst, last and best km/L, spend tiles and the last 12 segments' mileage |
+| **Dashboard** | A speedometer-style gauge with the needle on your average km/L, the odometer on a seven-segment display, fuel left after the last fill-up with the range it gives, worst, last full tank and best km/L, spend tiles and the mileage of the last 12 full tanks |
 | **Multiple vehicles** | Track a car, a bike and anything else side by side. Each vehicle has its own fill-ups, services, analytics, tank size, make and model, picture, and grading ranges; switch with the vehicle button on the Dashboard or the name on the Fuel tab |
 | **Garage tab** | Service, Trips and Papers for the active vehicle: swipe between them or tap the switch, and add to the one on show with the + by the title |
 | **Service records** | Log each service with its date, odometer, workshop, the work done, the cost and photos or PDFs of the bills, and schedule the next one by km, months or both. Garage → Service shows what is due next and the history; the Dashboard shows the next service |
 | **Trip log** | Start a trip from Garage → Trips, and a card on the Dashboard and a notification with Add fill-up, Odometer and End trip buttons stay while it is on. End it at the reading where it really finished, or with the trip ends here switch on a fill-up. Each km is charged at the km/L of the full tank it was driven on, so the fuel shows as Estimate, then Measured, or Exact when the trip starts and ends on full fill-ups. Share a trip as an image card, or export all trips as CSV |
 | **Papers** | RC, insurance, PUC certificate, licence and road tax with numbers, dates and photos, nearest expiry first, with a reminder before each one lapses |
-| **Tyres and battery** | On each vehicle's page: when each part was fitted and how much of its life in km or months is used, with a reminder near the end |
+| **Tyres and battery** | A card on Garage → Service: when each one was fitted and how much of its life in km or months is used, with a reminder near the end |
+| **Undo and Discard** | Deleting a fill-up, service, trip, paper, tyre or battery, or check offers Undo for a few seconds. Leaving a form with unsaved changes asks first |
 | **Bills and receipts** | Photos or PDFs on services and fill-ups, kept in backups. PDFs open in your PDF app |
 | **Checks** | Small jobs that repeat by days or km, such as tyre pressure or chain lube, on a card in Garage → Service, with a notification when one falls due. Tap the circle when done; tap the tick to mark it done again or undo |
 | **Odometer reading reminder** | A weekly notification, Sundays at 19:00 by default, with an Enter km box that saves the reading without opening the app, and a Photo button. It skips the week when a reading or fill-up came in the three days before |
 | **Readings** | Every odometer reading you enter outside a fill-up, with when and how, on a page opened from the Dashboard gauge. Delete one and the one before it becomes current; saving a reading shows Undo |
-| **Gauge scale** | The Dashboard gauge fits its scale to your fill-ups, or uses your own From and To set in Settings → Grading → Mileage ranges |
+| **Gauge scale** | The Dashboard gauge fits its scale to your fill-ups, or uses your own From and To set in Settings → Fill-up rating → Dashboard gauge scale |
 | **Fill up full nudge** | After three partial fill-ups in a row, the Dashboard asks for a full tank so mileage can be measured again |
 | **App lock** | Fingerprint, face or phone PIN when the app opens, and again after 1 or 5 minutes away, or immediately (Settings → Security) |
 | **Vehicle history PDF** | One PDF with a vehicle's summary, fill-ups, services, tyres and battery, papers and trips, with each bill photo on its own page at the end |
-| **Low fuel warning** | When an odometer reading leaves less than 50 km of fuel (Off, 30, 50 or 100 km in Settings → Grading), a notification, once per refill |
+| **Low fuel warning** | When an odometer reading leaves less than 50 km of fuel (Off, 30, 50 or 100 km in Settings → Alerts and reminders), a notification, once per fill-up |
 | **Price from the pump** | Picking a saved pump fills the price per litre from your last fill-up there |
 | **Charts you can read** | Touch or drag along a line chart for the date and value in a bubble; touch a bar for its month and amount |
 | **Monthly budget** | Set a fuel budget per vehicle; the Dashboard and the Fuel spend widget show what is left this month |
@@ -45,9 +46,9 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Mileage ranges** | Five bands, Poor to Great, colour each km/L. Bikes and cars start with their own defaults, and each vehicle's limits can be changed |
 | **In-app updates** | Checks GitHub once a day and offers new versions. It downloads the APK for your phone's processor and installs it only if it is this app, signed with the same key and newer |
 | **Segment-based efficiency** | Calculates km/L between consecutive full-tank entries — shows the exact *"X km ÷ Y L"* breakdown |
-| **Fuel list and refill detail** | Fill-ups grouped by month with the brand logo, km/L, cost per km and a grade from Poor to Great. Tap one for a sheet showing why it got that grade, with Open refill, Edit and Delete |
-| **Grading** | Each fill-up's grade is the lower of its km/L grade and its cost per km grade, so costly fuel can't hide behind good mileage. Both sets of ranges are set per vehicle in Settings → Grading |
-| **Analytics** | Fuel: monthly spend, mileage over time, the price you paid per litre against a year earlier, pump and fuel grade comparisons and totals. Service: monthly spend, spend by type, running cost per km with service included, and what is due. One period for the page: the last 12 months, overall, or a custom range with quick picks such as the April to March financial year. Ranges over 12 months draw a line you drag along to read a month |
+| **Fuel list and fill-up page** | Fill-ups grouped by month with the brand logo, price per litre, km/L, cost per km and a rating from Poor to Great. Tap one for a sheet showing why it got that rating, with Open fill-up, Edit and Delete; swipe the sheet up for the full page, which splits the fuel bought from the distance and the mileage it was measured over |
+| **Fill-up rating** | Each fill-up's rating is the lower of its km/L rating and its cost per km rating, so costly fuel can't hide behind good mileage. Both sets of ranges are set per vehicle in Settings → Fill-up rating |
+| **Analytics** | Fuel: monthly spend, mileage over time, the price you paid per litre against a year earlier, pump and fuel grade comparisons and totals. Service: monthly spend, spend by type, running cost per km with service included, and what is due. One period for the page: the last 12 months, all time, or a custom range with quick picks such as the April to March financial year. Ranges over 12 months draw a line you drag along to read a month |
 | **Pump comparison** | Ranks your pumps by km/L or by cost per km over the chosen period, brand first with its logo |
 | **Year report** | One card with a year's km, fuel and service spend, mileage and trips, shared as an image |
 | **Home screen widgets** | Mileage, Quick add, Tank, Next service, Fuel spend, Best pump, Odometer (with a Photo button that reads the odometer from the camera) and Trip (End, or Start), each named in the widget picker and updated whenever you use the app |
@@ -59,7 +60,7 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | **Tank level estimation** | Estimates the litres after each fill-up, and what's left now from an odometer reading entered on the Dashboard or the Odometer widget |
 | **Full / Partial fill tracking** | Handles both full-tank and partial-fill entries correctly |
 | **CSV import / export** | Export or import the current vehicle's fill-ups as CSV, import services from a CSV template, and export every vehicle's trips |
-| **Backup file** | Export one compressed file with every vehicle, its fill-ups and services, pumps, workshops, brands and grades, and settings, and restore it on any phone |
+| **Backup file** | Export one compressed file with every vehicle, its fill-ups, services, trips, papers, tyres and battery, checks, bills and photos, plus pumps, workshops, brands and the app's look, and restore it on any phone. Odometer readings and alert settings stay on the phone |
 | **Google Drive backup** | Optional daily, weekly or monthly upload of the same backup file. The app can only see files it created in your Drive |
 | **Logos and pictures** | Shell, HP, Indian Oil, Bharat Petroleum, Nayara Energy and Jio-BP show their logos; give any brand your own. Vehicles show an OpenMoji picture (Motorcycle or Scooter for bikes) or your own photo |
 | **Light and dark themes** | Light, dark or follow the phone, with 15 colour palettes. Each palette pairs a primary colour with a partner colour for spend bars and the tank level |
@@ -71,10 +72,10 @@ My H'ness records every fuel fill-up and works out **real-world mileage** for ea
 | Dashboard | Dashboard, dark |
 |---|---|
 | ![Dashboard with the mileage gauge and spend tiles](screenshots/dashboard.png) | ![Dashboard in dark mode](screenshots/dashboard_dark.png) |
-| **Fuel** | **Refill** |
-| ![Fill-ups grouped by month](screenshots/fuel.png) | ![One refill in detail](screenshots/refill.png) |
+| **Fuel** | **Fill-up** |
+| ![Fill-ups grouped by month](screenshots/fuel.png) | ![One fill-up in detail](screenshots/refill.png) |
 | **Grade sheet** | |
-| ![Why a fill-up got its grade](screenshots/grade_sheet.png) | |
+| ![Why a fill-up got its rating](screenshots/grade_sheet.png) | |
 | **Add fill-up** | **Garage, service** |
 | ![Add fill-up form](screenshots/add_fill_up.png) | ![Next scheduled service and history](screenshots/service.png) |
 | **Analytics, fuel** | **Analytics, service** |

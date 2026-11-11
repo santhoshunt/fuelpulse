@@ -19,6 +19,8 @@ import 'settings/about_section.dart';
 import 'settings/danger_section.dart';
 import 'settings/settings_widgets.dart';
 import 'settings/vehicles_section.dart';
+import '../utils/gauge_scale.dart';
+import 'gauge_scale_screen.dart';
 
 export 'settings/restore_mode_dialog.dart' show showRestoreModeDialog;
 
@@ -39,6 +41,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _pumpCount = 0;
   int _workshopCount = 0;
   int _typeCount = 0;
+  /// "Auto", or the custom From and To, for the gauge scale row.
+  String _gaugeLabel = 'Auto';
+
+  static String _trim(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+
   int _alertPercent = kMileageAlertDefault;
   int _lowFuelKm = kLowFuelKmDefault;
   String _readingReminder = kReadingReminderDefault;
@@ -61,8 +69,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final reading =
         prefs.getString(kReadingReminderKey) ?? kReadingReminderDefault;
     final types = await db.getServiceTypes();
+    final scale = await loadGaugeScale((await loadActiveVehicle()).id);
     if (!mounted) return;
     setState(() {
+      _gaugeLabel = scale == null
+          ? 'Auto'
+          : '${_trim(scale.$1)} to ${_trim(scale.$2)}';
       _pumpCount = pumps.length;
       _workshopCount = workshops.length;
       _typeCount = types.length;
@@ -280,13 +292,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
             const SizedBox(height: 32),
-            sectionHeader('Grading'),
+            sectionHeader('Fill-up rating'),
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 8),
               child: Text(
-                  "For the active vehicle. A fill-up's grade is the lower of "
-                  'its mileage and cost per km grades.',
+                  "For the active vehicle. A fill-up's rating is the lower of "
+                  'its mileage and cost per km ratings.',
                   style: TextStyle(color: colors.textSecondary, fontSize: 12)),
             ),
             settingsGroup([
@@ -300,6 +312,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: 'Cost per km ranges',
                 onTap: () => _ranges(cost: true),
               ),
+              SettingsRow(
+                icon: Icons.av_timer,
+                label: 'Dashboard gauge scale',
+                trailing: Text(_gaugeLabel, style: value),
+                onTap: () async =>
+                    _open(GaugeScaleScreen(vehicle: await loadActiveVehicle())),
+              ),
+            ]),
+            const SizedBox(height: 32),
+            sectionHeader('Alerts and reminders'),
+            const SizedBox(height: 12),
+            settingsGroup([
               SettingsRow(
                 icon: Icons.trending_down,
                 label: 'Mileage drop alert',
@@ -315,11 +339,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: value),
                 onTap: _pickLowFuel,
               ),
-            ]),
-            const SizedBox(height: 32),
-            sectionHeader('Reminders'),
-            const SizedBox(height: 12),
-            settingsGroup([
               SettingsRow(
                 icon: Icons.event_repeat,
                 label: 'Odometer reading reminder',

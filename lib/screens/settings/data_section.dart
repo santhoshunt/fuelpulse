@@ -42,21 +42,21 @@ class DataSection extends StatelessWidget {
       if (logs == null) return; // cancelled
       if (logs.isEmpty) {
         if (context.mounted) {
-          showSettingsSnack(context, 'No valid entries found in CSV.');
+          showSettingsSnack(context, 'No fill-ups found in that CSV file.');
         }
         return;
       }
       await _db.insertLogs(logs);
       if (context.mounted) {
         showSettingsSnack(
-            context, 'Imported ${logs.length} entries into ${vehicle.name}.');
+            context, 'Imported ${logs.length} fill-ups into ${vehicle.name}.');
       }
     } on FormatException catch (e) {
       if (context.mounted) {
         showSettingsSnack(context, 'Import error: ${e.message}');
       }
     } catch (e) {
-      if (context.mounted) showSettingsSnack(context, 'Import failed: $e');
+      if (context.mounted) showSettingsSnack(context, "Couldn't import that file. Check it is a CSV of fill-ups.");
     }
   }
 
@@ -69,7 +69,7 @@ class DataSection extends StatelessWidget {
       await exportBackupFile();
     } catch (e) {
       if (context.mounted) {
-        showSettingsSnack(context, 'Backup export failed: $e');
+        showSettingsSnack(context, "Couldn't export the backup. Try again.");
       }
     }
   }
@@ -81,18 +81,20 @@ class DataSection extends StatelessWidget {
       final count = await _db.getLogCount();
       if (!context.mounted) return;
       final mode = await showRestoreModeDialog(context,
-          title: 'Import Backup File', currentCount: count);
+          title: 'Import backup file', currentCount: count);
       if (mode == null) return;
       final restored = await restoreBackup(data, replace: mode == 'replace');
       await onRestored(mode == 'replace');
       if (context.mounted) {
         showSettingsSnack(context,
-            'Restored $restored ${restored == 1 ? 'entry' : 'entries'}.');
+            'Restored the backup: $restored ${restored == 1 ? 'fill-up' : 'fill-ups'} and everything with them.');
       }
     } on FormatException catch (e) {
       if (context.mounted) showSettingsSnack(context, e.message);
     } catch (e) {
-      if (context.mounted) showSettingsSnack(context, 'Import failed: $e');
+      if (context.mounted) {
+        showSettingsSnack(context, "Couldn't restore that file. Check it is a My H'ness backup.");
+      }
     }
   }
 
@@ -103,14 +105,14 @@ class DataSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        sectionHeader('Data Management'),
+        sectionHeader('Fill-ups and backup'),
         const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
               child: actionCard(
                 icon: Icons.upload_file,
-                label: 'Export CSV',
+                label: 'Export fill-ups (CSV)',
                 onTap: () => _exportData(context),
                 accent: accent,
               ),
@@ -119,7 +121,7 @@ class DataSection extends StatelessWidget {
             Expanded(
               child: actionCard(
                 icon: Icons.download,
-                label: 'Import CSV',
+                label: 'Import fill-ups (CSV)',
                 onTap: () => _importData(context),
                 accent: accent,
               ),
@@ -132,7 +134,7 @@ class DataSection extends StatelessWidget {
             Expanded(
               child: actionCard(
                 icon: Icons.archive_outlined,
-                label: 'Export Backup',
+                label: 'Export backup',
                 onTap: () => _exportBackup(context),
                 accent: accent,
               ),
@@ -141,7 +143,7 @@ class DataSection extends StatelessWidget {
             Expanded(
               child: actionCard(
                 icon: Icons.unarchive_outlined,
-                label: 'Import Backup',
+                label: 'Import backup',
                 onTap: () => _importBackup(context),
                 accent: accent,
               ),
@@ -150,9 +152,11 @@ class DataSection extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Backup files (.json.gz) carry everything: every vehicle with its '
-          'entries and costs, services, pumps, workshops, brands and grades, '
-          'and settings. CSV carries the current vehicle\'s entries only.',
+          'A backup file (.json.gz) holds your vehicles, fill-ups, services, '
+          'trips, papers, tyres and battery, checks, bills and photos, '
+          'pumps, workshops, brands and the app\'s look. Odometer readings '
+          'and alert settings stay on this phone. The CSV files hold the '
+          'current vehicle\'s fill-ups only.',
           style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
       ],

@@ -86,7 +86,7 @@ class _PumpsScreenState extends State<PumpsScreen> {
           if (_pumps.isEmpty)
             Text(
                 'No pumps yet. Add the ones you use, or pick a brand in the '
-                'refill form and its pump is added for you.',
+                'fill-up form and its pump is added for you.',
                 style: TextStyle(color: colors.textSecondary, fontSize: 14))
           else
             settingsGroup([
@@ -134,14 +134,14 @@ class _PumpsScreenState extends State<PumpsScreen> {
                 ),
             ]),
           const SizedBox(height: 12),
-          Text('The starred pump is pre-selected when you add a refill.',
+          Text('The starred pump is pre-selected when you add a fill-up.',
               style: TextStyle(color: colors.textSecondary, fontSize: 13)),
         ],
       ),
     );
   }
 
-  static String _refills(int n) => n == 1 ? '1 refill' : '$n refills';
+  static String _refills(int n) => n == 1 ? '1 fill-up' : '$n fill-ups';
 }
 
 /// Adds or edits a pump in a bottom sheet. Returns the saved pump, or null
@@ -243,7 +243,7 @@ class _PumpEditorState extends State<_PumpEditor> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Pre-select in the refill form'),
+            title: const Text('Pre-select in the fill-up form'),
             value: _favourite,
             onChanged: (v) => setState(() => _favourite = v),
           ),

@@ -19,7 +19,7 @@ class ModeSwitch extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     return SlidingSegments(
-      labels: const ['Odometer', 'KM Travelled'],
+      labels: const ['Odometer', 'Distance'],
       selected: isKmMode ? 1 : 0,
       enabled: [true, kmModeEnabled],
       onTap: (i) => onChanged(i == 1),

@@ -123,9 +123,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -0.5)),
                       ),
+                      // A calendar, not a share icon: it opens the report.
                       IconButton(
                         tooltip: 'Year report',
-                        icon: Icon(Icons.ios_share, color: colors.primary),
+                        icon: Icon(Icons.calendar_month_outlined,
+                            color: colors.primary),
                         onPressed: () => Navigator.push(
                             context,
                             SmoothPageRoute(
@@ -171,8 +173,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                   ..._priceCard(colors),
                                   ..._pumpCard(colors),
                                   ..._gradeCard(colors),
-                                  const SizedBox(height: 14),
-                                  _totalsCard(colors),
                                 ],
                     ),
                   ),
@@ -249,7 +249,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   String get _periodLabel => switch (_period.kind) {
         PeriodKind.last12 => '12 months',
-        PeriodKind.overall => 'Overall',
+        PeriodKind.overall => 'All time',
         PeriodKind.custom => '${DateFormat('d MMM yy').format(_range.from)} '
             'to ${DateFormat('d MMM yy').format(_range.to)}',
       };
@@ -287,7 +287,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           children: [
             for (final (k, label) in const [
               (PeriodKind.last12, 'Last 12 months'),
-              (PeriodKind.overall, 'Overall'),
+              (PeriodKind.overall, 'All time'),
               (PeriodKind.custom, 'Custom range…'),
             ])
               ListTile(
@@ -327,8 +327,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           (log.timestamp, spend),
     ]);
     final total = bars.fold<double>(0, (s, b) => s + b.$2);
+    final inPeriod = [for (final l in _chrono) if (_inRange(l.timestamp)) l];
+    final distance = inPeriod.length < 2
+        ? 0
+        : inPeriod.map((l) => l.odometer).reduce(math.max) -
+            inPeriod.map((l) => l.odometer).reduce(math.min);
+    final litres = inPeriod.fold<double>(0, (s, l) => s + l.liters);
     return _card([
-      _head('Fuel expenses', '₹${_grouped.format(total)}', colors),
+      _head('Fuel spend', '₹${_grouped.format(total)}', colors),
+      Text(
+          '${_grouped.format(distance)} km driven · '
+          '${litres.toStringAsFixed(1)} L · $_periodLabel',
+          style: TextStyle(color: colors.textSecondary, fontSize: 13)),
       const SizedBox(height: 12),
       _monthChart(bars),
     ]);
@@ -343,7 +353,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       title: 'Fuel mileage (km/L)',
       points: trend.map((p) => TrendPoint(p.closedAt, p.kmPerLitre)).toList(),
       formatValue: (v) => v.toStringAsFixed(1),
-      emptyMessage: 'Trend appears after 2 completed full-tank segments.',
+      emptyMessage: 'Appears after two full-tank fill-ups.',
     );
   }
 
@@ -492,7 +502,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
       if (sorted.isEmpty)
-        Text('Appears once a full-tank segment closes in this period.',
+        Text('Appears once two full-tank fill-ups fall in this period.',
             style: TextStyle(color: colors.textSecondary, fontSize: 13))
       else
         for (final r in sorted)
@@ -550,7 +560,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                     : '₹${r.perKm!.toStringAsFixed(2)}/km'),
                             if (r.price != null)
                               '₹${r.price!.toStringAsFixed(2)}/L',
-                            '${r.fills} ${r.fills == 1 ? 'refill' : 'refills'}',
+                            '${r.fills} ${r.fills == 1 ? 'fill-up' : 'fill-ups'}',
                           ].whereType<String>().join(' · '),
                           style: muted),
                     ],
@@ -572,7 +582,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       return [
         Padding(
           padding: const EdgeInsets.only(top: 60),
-          child: Text('No services yet. Log one on the Service tab.',
+          child: Text('No services yet. Add one in Garage, then Service.',
               textAlign: TextAlign.center,
               style: TextStyle(color: colors.textSecondary, fontSize: 14)),
         ),
@@ -589,9 +599,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     ]);
     final windowSpend = bars.fold<double>(0, (a, b) => a + b.$2);
 
+    // All time takes everything: its range starts at the first fill-up, and
+    // a service can come before that.
+    final all = _period.kind == PeriodKind.overall;
+    final services = [
+      for (final s in _services)
+        if (all || _inRange(s.timestamp)) s
+    ];
+    final logs = [for (final l in _chrono) if (all || _inRange(l.timestamp)) l];
+
     // A visit's cost split evenly across the types done.
     final byType = <String, double>{};
-    for (final s in _services) {
+    for (final s in services) {
       final cost = s.cost;
       if (cost == null || s.typeIds.isEmpty) continue;
       for (final id in s.typeIds) {
@@ -603,17 +622,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ..sort((a, b) => b.value.compareTo(a.value));
     final topType = typeRows.isEmpty ? 0.0 : typeRows.first.value;
 
-    // Running cost per km over everything driven.
-    final fuelPerKm = calculateCostStats(_chrono, now: _now).costPerKm;
+    // Running cost per km over what was driven in the period: spend in the
+    // period over the odometer span it covers.
     final readings = [
-      for (final l in _chrono) l.odometer,
-      for (final s in _services) s.odometer,
+      for (final l in logs) l.odometer,
+      for (final s in services) s.odometer,
     ];
     final span = readings.length < 2
         ? 0
         : readings.reduce(math.max) - readings.reduce(math.min);
-    final serviceSpend =
-        _services.fold<double>(0, (a, s) => a + (s.cost ?? 0));
+    final fuelSpend = logs.fold<double>(
+        0,
+        (a, l) =>
+            a + (l.totalCost ?? computeTotalCost(l.pricePerLitre, l.liters) ?? 0));
+    final serviceSpend = services.fold<double>(0, (a, s) => a + (s.cost ?? 0));
+    final fuelPerKm = span > 0 && fuelSpend > 0 ? fuelSpend / span : null;
     final servicePerKm = span > 0 ? serviceSpend / span : null;
 
     final upcoming = openSchedules(_services)
@@ -634,7 +657,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       if (typeRows.isNotEmpty) ...[
         const SizedBox(height: 14),
         _card([
-          _cap('Spend by service type', colors),
+          _cap('Spend by service type · $_periodLabel', colors),
           const SizedBox(height: 12),
           for (final e in typeRows)
             Padding(
@@ -665,7 +688,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ],
       const SizedBox(height: 14),
       _card([
-        _cap('Running cost per km', colors),
+        _cap('Running cost per km · $_periodLabel', colors),
         const SizedBox(height: 12),
         for (final (label, v) in [
           ('Fuel', fuelPerKm),
@@ -692,7 +715,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       if (upcoming.isNotEmpty) ...[
         const SizedBox(height: 14),
         _card([
-          _cap('Upcoming', colors),
+          _cap('Next service', colors),
           const SizedBox(height: 12),
           for (final n in upcoming)
             Padding(
@@ -738,46 +761,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ),
     ];
   }
-  Widget _totalsCard(AppColors colors) {
-    final inPeriod = [for (final l in _chrono) if (_inRange(l.timestamp)) l];
-    final spend = inPeriod.fold<double>(
-        0,
-        (s, l) =>
-            s + (l.totalCost ?? computeTotalCost(l.pricePerLitre, l.liters) ?? 0));
-    final distance = inPeriod.length < 2
-        ? 0
-        : inPeriod.map((l) => l.odometer).reduce(math.max) -
-            inPeriod.map((l) => l.odometer).reduce(math.min);
-    final litres = inPeriod.fold<double>(0, (s, l) => s + l.liters);
-    Widget figure(String cap, String value) => Expanded(
-          child: Column(
-            children: [
-              _cap(cap, colors),
-              const SizedBox(height: 2),
-              FittedBox(
-                child: Text(value,
-                    style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-        );
-    return _card([
-      Row(
-        children: [
-          figure('Spend', '₹${_grouped.format(spend)}'),
-          figure('Distance', '${_grouped.format(distance)} km'),
-          figure('Litres', '${litres.toStringAsFixed(1)} L'),
-        ],
-      ),
-      const SizedBox(height: 8),
-      Text(_period.kind == PeriodKind.overall ? 'All time' : _periodLabel,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: colors.textSecondary, fontSize: 12)),
-    ]);
-  }
+
 }
 
 /// One row of a ranked comparison.

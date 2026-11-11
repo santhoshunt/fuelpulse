@@ -13,10 +13,10 @@ import '../utils/trip_calculator.dart';
 import '../widgets/trip_strip.dart';
 import 'refill_detail_screen.dart';
 import 'service_screen.dart' show latestOdometer;
-import 'settings/settings_widgets.dart' show confirmListDelete;
 import 'trip_share_screen.dart';
 import 'trip_sheets.dart';
 import 'trips_screen.dart' show fuelQualityTag;
+import '../utils/undo_delete.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
@@ -43,7 +43,14 @@ class _TripScreenState extends State<TripScreen> {
   @override
   void initState() {
     super.initState();
+    dataRestored.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    dataRestored.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -94,14 +101,33 @@ class _TripScreenState extends State<TripScreen> {
     await _load();
   }
 
+  /// Deletes at once with Undo. Its fill-ups stay, taken off the trip; Undo
+  /// puts them back on it and brings back a trip that was on.
   Future<void> _delete() async {
     final t = _trip!;
-    final ok = await confirmListDelete(context, t.name,
-        'Its fill-ups stay, no longer on a trip. This cannot be undone.');
-    if (!ok) return;
-    await _db.deleteTrip(t.id);
-    await ServiceReminders.instance.cancelTrip(t.id);
-    if (mounted) Navigator.pop(context);
+    final navigator = Navigator.of(context);
+    var deleted = false;
+    await deleteWithUndo(
+      context,
+      message: '${t.name} deleted. Its fill-ups stay.',
+      rows: {
+        'trips': ('id = ?', [t.id]),
+        'fuel_logs': ('tripId = ?', [t.id]),
+      },
+      delete: () async {
+        await _db.deleteTrip(t.id);
+        return const [];
+      },
+      changed: () async {
+        if (!deleted) {
+          deleted = true;
+          await ServiceReminders.instance.cancelTrip(t.id);
+        } else if (t.isActive) {
+          await refreshTripNotification(t.vehicleId);
+        }
+      },
+    );
+    navigator.pop();
   }
 
   Future<void> _endTrip() async {
@@ -266,7 +292,7 @@ class _TripScreenState extends State<TripScreen> {
                     )
                   else ...[
                     row(
-                      'Fuel',
+                      'Fuel used',
                       InkWell(
                         onTap: _explain,
                         child: Row(
@@ -281,7 +307,7 @@ class _TripScreenState extends State<TripScreen> {
                       ),
                     ),
                     if (f.cost != null)
-                      row('Fuel cost',
+                      row('Cost of fuel used (estimate)',
                           Text('₹${_grouped.format(f.cost)}', style: strong)),
                     if (f.kmPerLitre != null)
                       row(
@@ -304,7 +330,7 @@ class _TripScreenState extends State<TripScreen> {
           ),
           if (_fills.isNotEmpty) ...[
             const SizedBox(height: 20),
-            Text('On this trip',
+            Text('Fill-ups during this trip',
                 style: TextStyle(
                     color: colors.textSecondary,
                     fontSize: 15,

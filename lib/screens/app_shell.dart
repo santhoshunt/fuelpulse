@@ -25,6 +25,7 @@ import 'scan_photos_screen.dart';
 import 'trip_screen.dart';
 import 'trip_sheets.dart';
 import 'settings_screen.dart';
+import '../utils/undo_delete.dart';
 
 /// The app's root: one tab per area over an [IndexedStack], so each tab
 /// keeps its scroll position. Start-up work that belongs to the app rather
@@ -65,6 +66,8 @@ class _AppShellState extends State<AppShell>
 
   Timer? _widgetsSoon;
 
+  void _bumpReload() => _reload.value++;
+
   /// Home screen widgets refresh 2 seconds after the last reload, not on
   /// each one: drawing the spend chart is slow, and switching tabs or
   /// saving a fill-up should not wait on it.
@@ -77,6 +80,8 @@ class _AppShellState extends State<AppShell>
   void initState() {
     super.initState();
     _tabIn.addListener(_swapAtSplit);
+    // An Undo put deleted rows back: every tab reads its data again.
+    dataRestored.addListener(_bumpReload);
     if (HomeWidgets.supported) {
       // The home screen widgets show what the app holds; keep them current.
       _reload.addListener(_refreshWidgetsSoon);
@@ -132,8 +137,8 @@ class _AppShellState extends State<AppShell>
       _select(tab);
       return;
     }
-    if (uri.host == 'trips') {
-      _garageSection.value = 1;
+    if (uri.host == 'trips' || uri.host == 'papers') {
+      _garageSection.value = uri.host == 'trips' ? 1 : 2;
       _select(2);
       return;
     }
@@ -192,6 +197,7 @@ class _AppShellState extends State<AppShell>
     _widgetTaps?.cancel();
     _notificationTaps?.cancel();
     _widgetsSoon?.cancel();
+    dataRestored.removeListener(_bumpReload);
     WidgetsBinding.instance.removeObserver(this);
     _reload.dispose();
     _garageSection.dispose();
@@ -279,6 +285,7 @@ class _AppShellState extends State<AppShell>
       content: Text('Updated to $tag. You can turn off Install unknown apps '
           "for My H'ness again."),
       duration: const Duration(seconds: 8),
+      persist: false,
       action: SnackBarAction(
         label: 'Settings',
         onPressed: ChannelUpdateInstaller.instance.openInstallSettings,

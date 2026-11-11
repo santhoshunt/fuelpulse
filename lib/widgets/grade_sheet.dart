@@ -54,7 +54,7 @@ Future<GradeAction?> showGradeSheet(BuildContext context,
   );
 }
 
-class _GradeSheet extends StatelessWidget {
+class _GradeSheet extends StatefulWidget {
   final FuelLog log;
   final Vehicle vehicle;
   final EfficiencyResult? eff;
@@ -62,7 +62,52 @@ class _GradeSheet extends StatelessWidget {
   const _GradeSheet({required this.log, required this.vehicle, this.eff});
 
   @override
+  State<_GradeSheet> createState() => _GradeSheetState();
+}
+
+class _GradeSheetState extends State<_GradeSheet> {
+  /// How far a finger has dragged up, in pixels; past [_openAt] letting go
+  /// opens the fill-up page. Read from raw pointer moves, so the sheet's own
+  /// drag down to close and its buttons work as before.
+  double _lift = 0;
+  double? _downY;
+  static const _openAt = 90.0;
+
+  FuelLog get log => widget.log;
+  Vehicle get vehicle => widget.vehicle;
+  EfficiencyResult? get eff => widget.eff;
+
+  void _released() {
+    if (_lift >= _openAt) {
+      Navigator.pop(context, GradeAction.open);
+    } else if (_lift > 0) {
+      setState(() => _lift = 0);
+    }
+    _downY = null;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (e) => _downY = e.position.dy,
+      onPointerMove: (e) {
+        final up = (_downY ?? e.position.dy) - e.position.dy;
+        setState(() => _lift = up > 0 ? up : 0);
+      },
+      onPointerUp: (_) => _released(),
+      onPointerCancel: (_) {
+        _downY = null;
+        setState(() => _lift = 0);
+      },
+      child: AnimatedSlide(
+        duration: const Duration(milliseconds: 120),
+        offset: Offset(0, -(_lift.clamp(0, 140) / 140) * 0.08),
+        child: _content(context),
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     final colors = AppColors.of(context);
     final b = Theme.of(context).brightness;
     final at = DateTime.tryParse(log.timestamp);
@@ -78,17 +123,17 @@ class _GradeSheet extends StatelessWidget {
             'next full tank.';
       }
       if (g == null) {
-        return 'Graded once the next full tank shows how far this fuel went.';
+        return 'Rated once the next full tank shows how far this fuel went.';
       }
       final m = MileageBands.names[g.mileage];
       if (g.cost == null) {
-        return 'Graded on mileage only: this fill-up has no price.';
+        return 'Rated on mileage only: this fill-up has no price.';
       }
       final c = MileageBands.names[g.cost!];
-      if (g.mileage == g.cost) return 'Both measures are $m.';
+      if (g.mileage == g.cost) return 'Mileage and cost per km are both $m.';
       return g.mileage > g.cost!
-          ? 'The grade is the lower of the two: $m mileage, but $c on cost.'
-          : 'The grade is the lower of the two: $c on cost, but $m mileage.';
+          ? 'The rating is the lower of the two: $m mileage, but $c on cost.'
+          : 'The rating is the lower of the two: $c on cost, but $m mileage.';
     }
 
     return SafeArea(
@@ -155,7 +200,7 @@ class _GradeSheet extends StatelessWidget {
                 Expanded(
                   child: FilledButton(
                     onPressed: () => Navigator.pop(context, GradeAction.open),
-                    child: const Text('Open refill'),
+                    child: const Text('Open fill-up'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -171,6 +216,13 @@ class _GradeSheet extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            Text(
+                _lift >= _openAt
+                    ? 'Release to open the fill-up'
+                    : 'Swipe up for the full fill-up',
+                textAlign: TextAlign.center,
+                style: muted.copyWith(fontSize: 12)),
           ],
         ),
       ),

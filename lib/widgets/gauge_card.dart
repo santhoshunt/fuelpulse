@@ -163,6 +163,10 @@ class GaugeCard extends StatelessWidget {
               const SizedBox(height: 14),
               _tank(colors, soft),
             ],
+            if (onUpdateReading != null) ...[
+              const SizedBox(height: 2),
+              _readingLinks(),
+            ],
             if (emptyMessage == null) ...[
               const SizedBox(height: 12),
               Container(
@@ -174,7 +178,7 @@ class GaugeCard extends StatelessWidget {
                     children: [
                       _figure('WORST', worst, soft),
                       VerticalDivider(width: 1, color: divider),
-                      _figure('LAST REFILL', last, soft),
+                      _figure('LAST FULL TANK', last, soft),
                       VerticalDivider(width: 1, color: divider),
                       _figure('BEST', best, soft),
                     ],
@@ -198,7 +202,7 @@ class GaugeCard extends StatelessWidget {
         Row(
           children: [
             Expanded(
-                child: Text(tankCaption ?? 'In the tank after the last refill',
+                child: Text(tankCaption ?? 'In the tank after the last fill-up',
                     style: small)),
             Text('${level.toStringAsFixed(1)} of ${_trim(cap)} L', style: small),
           ],
@@ -217,20 +221,29 @@ class GaugeCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(tankNote!, style: small),
         ],
-        if (onUpdateReading != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: onUpdateReading,
-              style: TextButton.styleFrom(
-                  foregroundColor: AppColors.gaugeInk,
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact),
-              child: const Text('Update odometer reading',
-                  style: TextStyle(
-                      decoration: TextDecoration.underline, fontSize: 13)),
-            ),
-          ),
+      ],
+    );
+  }
+
+  /// "Enter odometer reading" and "Readings", shown with or without a tank.
+  Widget _readingLinks() {
+    Widget link(String label, VoidCallback onTap) => TextButton(
+          onPressed: onTap,
+          style: TextButton.styleFrom(
+              foregroundColor: AppColors.gaugeInk,
+              padding: EdgeInsets.zero,
+              visualDensity: VisualDensity.compact),
+          child: Text(label,
+              style: const TextStyle(
+                  decoration: TextDecoration.underline, fontSize: 13)),
+        );
+    return Row(
+      children: [
+        link('Enter odometer reading', onUpdateReading!),
+        if (onOdometerTap != null) ...[
+          const SizedBox(width: 18),
+          link('Readings', onOdometerTap!),
+        ],
       ],
     );
   }

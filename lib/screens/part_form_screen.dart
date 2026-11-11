@@ -9,18 +9,22 @@ import '../utils/page_routes.dart';
 import '../widgets/option_picker.dart';
 import 'service_screen.dart' show latestOdometer;
 import 'settings/settings_widgets.dart';
+import '../utils/undo_delete.dart';
+import '../widgets/discard_guard.dart';
 
 final _day = DateFormat('yyyy-MM-dd');
 final _shown = DateFormat('d MMM y');
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
 /// A vehicle's tyres and battery with how much of each one's life is used,
-/// for the vehicle's edit page. Parts save on their own, apart from the
-/// vehicle's Save.
+/// as a card on Garage, Service beside Checks.
 class PartsSection extends StatefulWidget {
   final String vehicleId;
 
-  const PartsSection({super.key, required this.vehicleId});
+  /// The latest odometer; a change reloads the card.
+  final int? odometer;
+
+  const PartsSection({super.key, required this.vehicleId, this.odometer});
 
   @override
   State<PartsSection> createState() => _PartsSectionState();
@@ -33,7 +37,22 @@ class _PartsSectionState extends State<PartsSection> {
   @override
   void initState() {
     super.initState();
+    dataRestored.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    dataRestored.removeListener(_load);
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(PartsSection old) {
+    super.didUpdateWidget(old);
+    if (old.vehicleId != widget.vehicleId || old.odometer != widget.odometer) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -65,7 +84,37 @@ class _PartsSectionState extends State<PartsSection> {
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text('TYRES AND BATTERY',
+                      style: TextStyle(
+                          color: colors.textSecondary,
+                          fontSize: 11,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w600)),
+                ),
+                IconButton(
+                  tooltip: 'Add tyre or battery',
+                  icon: Icon(Icons.add, color: colors.primary),
+                  onPressed: () => _open(),
+                ),
+              ],
+            ),
+          ),
+          if (_parts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              child: Text(
+                  'Add your tyres and battery to see how much of their life '
+                  'is used and get a reminder before a change. Tap + to add '
+                  'one.',
+                  style: muted.copyWith(fontSize: 13)),
+            ),
           for (final p in _parts) ...[
             InkWell(
               onTap: () => _open(p),
@@ -129,14 +178,10 @@ class _PartsSectionState extends State<PartsSection> {
                 }),
               ),
             ),
-            Divider(height: 1, indent: 16, endIndent: 16, color: colors.cardBorder),
+            if (p != _parts.last)
+              Divider(
+                  height: 1, indent: 16, endIndent: 16, color: colors.cardBorder),
           ],
-          ListTile(
-            leading: Icon(Icons.add, color: colors.primary),
-            title: Text('Add tyre or battery',
-                style: TextStyle(color: colors.primary)),
-            onTap: () => _open(),
-          ),
         ],
       ),
     );
@@ -158,7 +203,7 @@ class PartFormScreen extends StatefulWidget {
   State<PartFormScreen> createState() => _PartFormScreenState();
 }
 
-class _PartFormScreenState extends State<PartFormScreen> {
+class _PartFormScreenState extends State<PartFormScreen> with DiscardGuard {
   final _formKey = GlobalKey<FormState>();
   late final Part? _p = widget.part;
   late String _kind = _p?.kind ?? 'tyre';
@@ -173,6 +218,12 @@ class _PartFormScreenState extends State<PartFormScreen> {
   late final _notes = TextEditingController(text: _p?.notes ?? '');
   late DateTime _fitted = DateTime.tryParse(_p?.fittedAt ?? '') ?? DateTime.now();
   late DateTime? _warranty = DateTime.tryParse(_p?.warrantyUntil ?? '');
+
+  @override
+  void initState() {
+    super.initState();
+    markClean();
+  }
 
   @override
   void dispose() {
@@ -229,16 +280,30 @@ class _PartFormScreenState extends State<PartFormScreen> {
   }
 
   Future<void> _delete() async {
-    final ok = await confirmListDelete(
-        context, _p!.label, 'Its history is not kept. This cannot be undone.');
-    if (!ok) return;
-    await DatabaseHelper().deletePart(_p.id);
-    await ServiceReminders.instance.rescheduleAll();
-    if (mounted) Navigator.pop(context, true);
+    final p = _p!;
+    final navigator = Navigator.of(context);
+    await deleteWithUndo(
+      context,
+      message: '${p.label} deleted',
+      rows: {
+        'parts': ('id = ?', [p.id]),
+      },
+      delete: () async {
+        await DatabaseHelper().deletePart(p.id);
+        return const [];
+      },
+      changed: ServiceReminders.instance.rescheduleAll,
+    );
+    navigator.pop(true);
   }
 
   @override
-  Widget build(BuildContext context) {
+  String formSnapshot() => [_kind, _label.text, _brand.text, _odo.text, _lifeKm.text, _lifeMonths.text, _notes.text, _fitted.toIso8601String(), _warranty].join('|');
+
+  @override
+  Widget build(BuildContext context) => guard(_page(context));
+
+  Widget _page(BuildContext context) {
     final colors = AppColors.of(context);
     final note = TextStyle(color: colors.textSecondary, fontSize: 12);
     String? positive(String? v) {

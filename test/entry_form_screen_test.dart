@@ -9,6 +9,7 @@ import 'package:fuelpulse/db/database_helper.dart';
 import 'package:fuelpulse/models/fuel_log.dart';
 import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/screens/entry_form_screen.dart';
+import 'package:fuelpulse/widgets/mode_switch.dart';
 
 final _db = DatabaseHelper();
 
@@ -89,6 +90,10 @@ Future<void> _tapButton(WidgetTester tester, String label) async {
   await _settle(tester);
 }
 
+/// A segment of the Odometer or Distance switch, not the field below it.
+Finder _modeSegment(String label) =>
+    find.descendant(of: find.byType(ModeSwitch), matching: find.text(label));
+
 void main() {
   setUpAll(() async {
     sqfliteFfiInit();
@@ -103,18 +108,60 @@ void main() {
     await _db.resetToDefaultVehicle();
   });
 
+  group('leaving the form', () {
+    Future<void> back(WidgetTester tester) async {
+      await tester.binding.handlePopRoute();
+      await _settle(tester);
+    }
+
+    testWidgets('Back with nothing typed closes without asking',
+        (tester) async {
+      final results = await _openForm(tester);
+      await back(tester);
+      expect(find.text('Discard changes?'), findsNothing);
+      expect(results, [null]);
+    });
+
+    testWidgets('Back after typing asks, and Keep editing stays',
+        (tester) async {
+      final results = await _openForm(tester);
+      await tester.enterText(_field('Litres'), '20');
+      await back(tester);
+      expect(find.text('Discard changes?'), findsOneWidget);
+
+      await tester.tap(find.text('Keep editing'));
+      await _settle(tester);
+      expect(results, isEmpty);
+      expect(_text(tester, 'Litres'), '20');
+
+      await back(tester);
+      await tester.tap(find.text('Discard'));
+      await _settle(tester);
+      expect(results, [null]);
+    });
+
+    testWidgets('an opened fill-up left as it was closes without asking',
+        (tester) async {
+      await _real(tester, () => _db.insertLogs([_log('a', 10000)]));
+      final results = await _openForm(tester, logId: 'a');
+      await back(tester);
+      expect(find.text('Discard changes?'), findsNothing);
+      expect(results, [null]);
+    });
+  });
+
   group('add mode', () {
     testWidgets('saves a new fill-up and derives the total from the price',
         (tester) async {
       final results = await _openForm(tester);
-      expect(find.text('Add Fill-up · My vehicle'), findsOneWidget);
+      expect(find.text('Add fill-up · My vehicle'), findsOneWidget);
 
-      await tester.enterText(_field('Odometer (km)'), '12000');
-      await tester.enterText(_field('Liters'), '20');
+      await tester.enterText(_field('Odometer'), '12000');
+      await tester.enterText(_field('Litres'), '20');
       await tester.enterText(_field('Price (₹/L)'), '100');
       expect(_text(tester, 'Total (₹)'), '2000.00');
 
-      await _tapButton(tester, 'Save Entry');
+      await _tapButton(tester, 'Save fill-up');
 
       expect(results, [true]);
       final logs = await _real(tester, () => _db.getAllLogs(kDefaultVehicleId));
@@ -133,11 +180,11 @@ void main() {
     testWidgets('typing the total derives the price, and litres edits keep '
         'the total fixed', (tester) async {
       await _openForm(tester);
-      await tester.enterText(_field('Liters'), '20');
+      await tester.enterText(_field('Litres'), '20');
       await tester.enterText(_field('Total (₹)'), '2000');
       expect(_text(tester, 'Price (₹/L)'), '100.00');
 
-      await tester.enterText(_field('Liters'), '25');
+      await tester.enterText(_field('Litres'), '25');
       expect(_text(tester, 'Total (₹)'), '2000');
       expect(_text(tester, 'Price (₹/L)'), '80.00');
     });
@@ -145,7 +192,7 @@ void main() {
     testWidgets('clearing the price clears the derived total',
         (tester) async {
       await _openForm(tester);
-      await tester.enterText(_field('Liters'), '20');
+      await tester.enterText(_field('Litres'), '20');
       await tester.enterText(_field('Price (₹/L)'), '100');
       await tester.enterText(_field('Price (₹/L)'), '');
       expect(_text(tester, 'Total (₹)'), '');
@@ -153,31 +200,31 @@ void main() {
 
     testWidgets('empty required fields block the save', (tester) async {
       final results = await _openForm(tester);
-      await _tapButton(tester, 'Save Entry');
+      await _tapButton(tester, 'Save fill-up');
 
-      expect(find.text('Enter odometer reading'), findsOneWidget);
-      expect(find.text('Enter liters'), findsOneWidget);
+      expect(find.text('Enter the odometer reading'), findsOneWidget);
+      expect(find.text('Enter the litres'), findsOneWidget);
       expect(results, isEmpty);
       expect(await _real(tester, _db.getLogCount), 0);
     });
 
     testWidgets('KM mode is disabled when there are no logs', (tester) async {
       await _openForm(tester);
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      expect(_field('Odometer (km)'), findsOneWidget);
-      expect(_field('KM Driven'), findsNothing);
+      expect(_field('Odometer'), findsOneWidget);
+      expect(_field('Distance since last fill-up'), findsNothing);
     });
 
     testWidgets('a negative KM distance is refused', (tester) async {
       await _real(tester, () => _db.insertLog(_log('prev', 10000)));
       final results = await _openForm(tester);
 
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      await tester.enterText(_field('KM Driven'), '-200');
-      await tester.enterText(_field('Liters'), '20');
-      await _tapButton(tester, 'Save Entry');
+      await tester.enterText(_field('Distance since last fill-up'), '-200');
+      await tester.enterText(_field('Litres'), '20');
+      await _tapButton(tester, 'Save fill-up');
 
       expect(find.text("Distance can't be negative"), findsOneWidget);
       expect(results, isEmpty);
@@ -197,9 +244,9 @@ void main() {
       });
       await _openForm(tester);
 
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      expect(find.text('Last odometer: 10000 km'), findsOneWidget);
+      expect(find.text('Last fill-up at 10000 km'), findsOneWidget);
     });
 
     testWidgets('KM mode adds the distance to the latest odometer',
@@ -207,13 +254,13 @@ void main() {
       await _real(tester, () => _db.insertLog(_log('prev', 10000)));
       await _openForm(tester);
 
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      expect(find.text('Last odometer: 10000 km'), findsOneWidget);
+      expect(find.text('Last fill-up at 10000 km'), findsOneWidget);
 
-      await tester.enterText(_field('KM Driven'), '450');
-      await tester.enterText(_field('Liters'), '25');
-      await _tapButton(tester, 'Save Entry');
+      await tester.enterText(_field('Distance since last fill-up'), '450');
+      await tester.enterText(_field('Litres'), '25');
+      await _tapButton(tester, 'Save fill-up');
 
       final logs = await _real(tester, () => _db.getAllLogsChrono(kDefaultVehicleId));
       expect(logs.map((l) => l.odometer), [10000, 10450]);
@@ -224,14 +271,14 @@ void main() {
       await _real(tester, () => _db.insertLog(_log('prev', 10000)));
       await _openForm(tester);
 
-      await tester.enterText(_field('Odometer (km)'), '10400');
-      await tester.tap(find.text('KM Travelled'));
+      await tester.enterText(_field('Odometer'), '10400');
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      expect(_text(tester, 'KM Driven'), '400');
+      expect(_text(tester, 'Distance since last fill-up'), '400');
 
-      await tester.tap(find.text('Odometer'));
+      await tester.tap(_modeSegment('Odometer'));
       await _settle(tester);
-      expect(_text(tester, 'Odometer (km)'), '10400');
+      expect(_text(tester, 'Odometer'), '10400');
     });
 
     testWidgets('tapping the mode that is already selected changes nothing',
@@ -239,16 +286,16 @@ void main() {
       await _real(tester, () => _db.insertLog(_log('prev', 10000)));
       await _openForm(tester);
 
-      await tester.enterText(_field('Odometer (km)'), '10400');
-      await tester.tap(find.text('Odometer'));
+      await tester.enterText(_field('Odometer'), '10400');
+      await tester.tap(_modeSegment('Odometer'));
       await _settle(tester);
-      expect(_text(tester, 'Odometer (km)'), '10400');
+      expect(_text(tester, 'Odometer'), '10400');
 
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      expect(_text(tester, 'KM Driven'), '400');
+      expect(_text(tester, 'Distance since last fill-up'), '400');
     });
 
     testWidgets('a backward odometer asks first, and Cancel saves nothing',
@@ -256,18 +303,18 @@ void main() {
       await _real(tester, () => _db.insertLog(_log('prev', 10000)));
       final results = await _openForm(tester);
 
-      await tester.enterText(_field('Odometer (km)'), '9000');
-      await tester.enterText(_field('Liters'), '25');
-      await _tapButton(tester, 'Save Entry');
-      expect(find.text('Odometer Warning'), findsOneWidget);
+      await tester.enterText(_field('Odometer'), '9000');
+      await tester.enterText(_field('Litres'), '25');
+      await _tapButton(tester, 'Save fill-up');
+      expect(find.text('Odometer looks wrong'), findsOneWidget);
 
       await tester.tap(find.text('Cancel'));
       await _settle(tester);
       expect(results, isEmpty);
       expect(await _real(tester, _db.getLogCount), 1);
 
-      await _tapButton(tester, 'Save Entry');
-      await tester.tap(find.text('Save Anyway'));
+      await _tapButton(tester, 'Save fill-up');
+      await tester.tap(find.text('Save anyway'));
       await _settle(tester);
       expect(results, [true]);
       expect(await _real(tester, _db.getLogCount), 2);
@@ -275,11 +322,11 @@ void main() {
 
     testWidgets('Full Tank off saves a partial fill', (tester) async {
       await _openForm(tester);
-      await tester.enterText(_field('Odometer (km)'), '12000');
-      await tester.enterText(_field('Liters'), '10');
+      await tester.enterText(_field('Odometer'), '12000');
+      await tester.enterText(_field('Litres'), '10');
       await tester.tap(find.byType(Switch));
       await _settle(tester);
-      await _tapButton(tester, 'Save Entry');
+      await _tapButton(tester, 'Save fill-up');
 
       final log = (await _real(tester, () => _db.getAllLogs(kDefaultVehicleId))).single;
       expect(log.fullTank, isFalse);
@@ -298,9 +345,9 @@ void main() {
               pricePerLitre: 111.11)));
       await _openForm(tester, logId: 'a');
 
-      expect(find.text('Edit Fill-up · My vehicle'), findsOneWidget);
-      expect(_text(tester, 'Odometer (km)'), '10000');
-      expect(_text(tester, 'Liters'), '22.5');
+      expect(find.text('Edit fill-up · My vehicle'), findsOneWidget);
+      expect(_text(tester, 'Odometer'), '10000');
+      expect(_text(tester, 'Litres'), '22.5');
       expect(_text(tester, 'Price (₹/L)'), '111.11');
       expect(_text(tester, 'Total (₹)'), '2500.0');
       expect(find.text('Indian Oil'), findsOneWidget);
@@ -315,10 +362,10 @@ void main() {
               _log('a', 10000, timestamp: '2026-07-01T08:15:00.000')));
       final results = await _openForm(tester, logId: 'a');
 
-      await tester.enterText(_field('Liters'), '28');
+      await tester.enterText(_field('Litres'), '28');
       await tester.enterText(_field('Notes (optional)'), 'highway');
-      await _tapButton(tester, 'Save Changes');
-      expect(find.text('Save changes to this entry?'), findsOneWidget);
+      await _tapButton(tester, 'Save changes');
+      expect(find.text('Save the changes to this fill-up?'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(ElevatedButton, 'Save'));
       await _settle(tester);
@@ -336,8 +383,8 @@ void main() {
       await _real(tester, () => _db.insertLog(_log('a', 10000)));
       final results = await _openForm(tester, logId: 'a');
 
-      await tester.enterText(_field('Liters'), '28');
-      await _tapButton(tester, 'Save Changes');
+      await tester.enterText(_field('Litres'), '28');
+      await _tapButton(tester, 'Save changes');
       await tester.tap(find.text('Cancel'));
       await _settle(tester);
 
@@ -356,7 +403,7 @@ void main() {
 
       await tester.enterText(_field('Total (₹)'), '');
       expect(_text(tester, 'Price (₹/L)'), '');
-      await _tapButton(tester, 'Save Changes');
+      await _tapButton(tester, 'Save changes');
       await tester.tap(find.widgetWithText(ElevatedButton, 'Save'));
       await _settle(tester);
 
@@ -376,13 +423,13 @@ void main() {
               ]));
       await _openForm(tester, logId: 'b');
 
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      expect(_text(tester, 'KM Driven'), '600');
-      expect(find.text('Previous odometer: 10000 km'), findsOneWidget);
+      expect(_text(tester, 'Distance since last fill-up'), '600');
+      expect(find.text('Fill-up before this one at 10000 km'), findsOneWidget);
 
-      await tester.enterText(_field('KM Driven'), '700');
-      await _tapButton(tester, 'Save Changes');
+      await tester.enterText(_field('Distance since last fill-up'), '700');
+      await _tapButton(tester, 'Save changes');
       await tester.tap(find.widgetWithText(ElevatedButton, 'Save'));
       await _settle(tester);
 
@@ -398,9 +445,9 @@ void main() {
                 _log('b', 10600, timestamp: '2026-07-10T09:00:00.000'),
               ]));
       await _openForm(tester, logId: 'a');
-      await tester.tap(find.text('KM Travelled'));
+      await tester.tap(find.text('Distance'));
       await _settle(tester);
-      expect(_field('KM Driven'), findsNothing);
+      expect(_field('Distance since last fill-up'), findsNothing);
     });
 
     testWidgets('a fuel type and brand missing from the lists are kept',
@@ -413,7 +460,7 @@ void main() {
       expect(find.text('Reliance'), findsOneWidget);
       expect(find.text('Diesel+'), findsOneWidget);
 
-      await _tapButton(tester, 'Save Changes');
+      await _tapButton(tester, 'Save changes');
       await tester.tap(find.widgetWithText(ElevatedButton, 'Save'));
       await _settle(tester);
 
@@ -425,7 +472,7 @@ void main() {
     testWidgets('a missing log closes the form', (tester) async {
       await _openForm(tester, logId: 'does-not-exist');
       expect(find.text('open form'), findsOneWidget);
-      expect(find.textContaining('Edit Fill-up'), findsNothing);
+      expect(find.textContaining('Edit fill-up'), findsNothing);
     });
   });
 }

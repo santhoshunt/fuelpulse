@@ -1032,4 +1032,29 @@ class DatabaseHelper {
     final db = await database;
     await db.delete('attachments', where: 'id = ?', whereArgs: [id]);
   }
+
+  // Undo for deletes
+
+  /// The rows a delete is about to remove, per table: each table maps to a
+  /// where clause and its arguments. [restoreRows] writes them back.
+  Future<Map<String, List<Map<String, Object?>>>> snapshotRows(
+      Map<String, (String, List<Object?>)> where) async {
+    final db = await database;
+    return {
+      for (final e in where.entries)
+        e.key: await db.query(e.key, where: e.value.$1, whereArgs: e.value.$2),
+    };
+  }
+
+  /// Puts back rows taken with [snapshotRows], replacing any with the same id.
+  Future<void> restoreRows(Map<String, List<Map<String, Object?>>> rows) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final e in rows.entries) {
+        for (final r in e.value) {
+          await txn.insert(e.key, r, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+    });
+  }
 }

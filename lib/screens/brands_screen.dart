@@ -32,7 +32,7 @@ class _BrandsScreenState extends State<BrandsScreen> {
 
   Future<void> _add() async {
     final name = await showAddFuelTypeDialog(context,
-        title: 'Add Pump Brand', hint: 'e.g. Reliance');
+        title: 'Add pump brand', hint: 'e.g. Reliance');
     if (name == null || name.trim().isEmpty) return;
     if (!await addBrand(name) && mounted) {
       showSettingsSnack(context, '"${name.trim()}" already exists.');
@@ -137,7 +137,7 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
   void _snack(String s) => showSettingsSnack(context, s);
 
   String _updated(int n) =>
-      'Renamed. Updated $n existing ${n == 1 ? 'entry' : 'entries'}.';
+      'Renamed. Updated $n existing ${n == 1 ? 'fill-up' : 'fill-ups'}.';
 
   Future<void> _rename() async {
     final name = await showAddFuelTypeDialog(context,
@@ -164,7 +164,7 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
     final ok = await confirmListDelete(
         context,
         _brand,
-        'Existing entries and pumps keep this brand on their record; it just '
+        'Existing fill-ups and pumps keep this brand on their record; it just '
         "won't be offered for new fill-ups.");
     if (!ok) return;
     await deleteBrand(_brand);
@@ -182,7 +182,7 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
 
   Future<void> _renameGrade(String from) async {
     final name = await showAddFuelTypeDialog(context,
-        title: 'Rename Fuel Grade', initial: from);
+        title: 'Rename fuel grade', initial: from);
     if (name == null || name.trim().isEmpty || name.trim() == from) return;
     final n = await renameGrade(_brand, from, name);
     if (mounted) _snack(n < 0 ? '"${name.trim()}" already exists.' : _updated(n));
@@ -193,7 +193,7 @@ class _BrandEditScreenState extends State<BrandEditScreen> {
     final ok = await confirmListDelete(
         context,
         grade,
-        'Existing entries keep this grade on their record; it just '
+        'Existing fill-ups keep this grade on their record; it just '
         "won't be offered for new fill-ups.");
     if (!ok) return;
     await deleteGrade(_brand, grade);

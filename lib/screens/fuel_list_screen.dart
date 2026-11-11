@@ -6,7 +6,6 @@ import '../models/fuel_log.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
-import '../utils/custom_pictures.dart';
 import '../utils/efficiency_calculator.dart';
 import '../utils/page_routes.dart';
 import '../utils/vehicle_manager.dart';
@@ -16,6 +15,8 @@ import '../widgets/vehicle_picker.dart';
 import 'entry_form_screen.dart';
 import 'refill_detail_screen.dart';
 import 'scan_photos_screen.dart';
+import '../utils/undo_delete.dart';
+import 'dart:async';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
@@ -204,9 +205,9 @@ class _FuelListScreenState extends State<FuelListScreen> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             if (photoScanSupported)
-              round(Icons.photo_camera_outlined, 'Scan photos to add a refill',
+              round(Icons.photo_camera_outlined, 'Scan photos to add a fill-up',
                   _scan),
-            round(Icons.add, 'Add refill', _add),
+            round(Icons.add, 'Add fill-up', _add),
           ],
         ),
         Text('Fuel',
@@ -249,7 +250,7 @@ class _FuelListScreenState extends State<FuelListScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.w500)),
           const SizedBox(height: 6),
-          Text('Tap + to add your first entry.',
+          Text('Tap + to add your first fill-up.',
               style: TextStyle(color: colors.textSecondary, fontSize: 14)),
         ],
       ),
@@ -307,35 +308,9 @@ class _FuelListScreenState extends State<FuelListScreen> {
       case GradeAction.edit:
         await _open(EntryFormScreen(logId: log.id));
       case GradeAction.delete:
-        if (await _confirmDelete(log)) {
-          await deletePictureFiles(await _db.deleteLog(log.id));
-          widget.reload.value++;
-        }
+        unawaited(deleteFillUpWithUndo(context, log,
+            changed: () async => widget.reload.value++));
     }
-  }
-
-  Future<bool> _confirmDelete(FuelLog log) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Entry'),
-        content: Text(
-            'Delete the fill-up on ${log.odometer} km? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.of(ctx).danger,
-                foregroundColor: Colors.white),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
   }
 
   Widget _row(FuelLog log, AppColors colors) {
@@ -345,12 +320,12 @@ class _FuelListScreenState extends State<FuelListScreen> {
         log.pricePerLitre ?? computePricePerLitre(log.totalCost, log.liters);
     final kmL = _eff[log.id]?.value;
     final sub = TextStyle(color: colors.textSecondary, fontSize: 13);
+    // The same order on every row: price per litre, then km/L and cost per
+    // km once the tank's mileage is known.
     final figures = [
+      if (price != null) '₹${price.toStringAsFixed(2)}/L',
       if (kmL != null) '${kmL.toStringAsFixed(1)} km/L',
-      if (kmL != null && price != null)
-        '₹${(price / kmL).toStringAsFixed(2)}/km'
-      else if (price != null)
-        '₹${price.toStringAsFixed(2)}/L',
+      if (kmL != null && price != null) '₹${(price / kmL).toStringAsFixed(2)}/km',
     ].join(' · ');
 
     final row = _rowContent(log, colors, at, total, sub, figures);

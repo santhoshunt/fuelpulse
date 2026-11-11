@@ -7,6 +7,7 @@ import '../../utils/custom_pictures.dart';
 import '../../widgets/vehicle_icon.dart';
 import '../../widgets/vehicle_picker.dart';
 import 'settings_widgets.dart';
+import '../../utils/vehicle_manager.dart';
 
 /// Every vehicle with its tank size: add, edit and delete. Replaces the
 /// single global Tank Capacity setting from before v2.0.0.
@@ -75,6 +76,7 @@ class _VehiclesSectionState extends State<VehiclesSection> {
     );
     if (confirm != true) return false;
     await deletePictureFiles(await _db.deleteVehicle(vehicle.id));
+    await clearVehicleExtras(vehicle.id);
     await ServiceReminders.instance.rescheduleAll();
     if (mounted) showSettingsSnack(context, 'Deleted "${vehicle.name}".');
     await _load();

@@ -5,8 +5,8 @@ import '../theme/app_colors.dart';
 import '../utils/custom_pictures.dart';
 import '../widgets/vehicle_icon.dart';
 import '../widgets/vehicle_picker.dart' show vehicleIcon, vehicleTypeLabel;
-import 'part_form_screen.dart';
 import 'settings/settings_widgets.dart';
+import '../widgets/discard_guard.dart';
 
 /// Add ([initial] null) or edit a vehicle: name, make and model, type and
 /// tank size, monthly fuel budget, and (edit only) its tyres and battery.
@@ -29,7 +29,7 @@ class VehicleEditScreen extends StatefulWidget {
   State<VehicleEditScreen> createState() => _VehicleEditScreenState();
 }
 
-class _VehicleEditScreenState extends State<VehicleEditScreen> {
+class _VehicleEditScreenState extends State<VehicleEditScreen> with DiscardGuard {
   late final _name = TextEditingController(text: widget.initial?.name ?? '');
   late final _model =
       TextEditingController(text: widget.initial?.model ?? '');
@@ -45,6 +45,12 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
   String? _nameError;
   String? _capError;
   String? _budgetError;
+
+  @override
+  void initState() {
+    super.initState();
+    markClean();
+  }
 
   @override
   void dispose() {
@@ -109,12 +115,17 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  String formSnapshot() => [_name.text, _model.text, _cap.text, _budget.text, _type.name, _icon].join('|');
+
+  @override
+  Widget build(BuildContext context) => guard(_page(context));
+
+  Widget _page(BuildContext context) {
     final colors = AppColors.of(context);
     final note = TextStyle(color: colors.textSecondary, fontSize: 12);
     return Scaffold(
       appBar: AppBar(
-          title: Text(widget.initial == null ? 'Add Vehicle' : 'Edit Vehicle')),
+          title: Text(widget.initial == null ? 'Add vehicle' : 'Edit Vehicle')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -222,12 +233,6 @@ class _VehicleEditScreenState extends State<VehicleEditScreen> {
             child: Text('Shows how much is left this month on the Dashboard.',
                 style: note),
           ),
-          if (widget.initial != null) ...[
-            const SizedBox(height: 24),
-            sectionHeader('Tyres and battery'),
-            const SizedBox(height: 12),
-            PartsSection(vehicleId: widget.initial!.id),
-          ],
           const SizedBox(height: 28),
           SizedBox(
             height: 52,

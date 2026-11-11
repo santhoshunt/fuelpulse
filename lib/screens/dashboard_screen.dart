@@ -191,11 +191,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return (
       litres: after,
       caption: at == null
-          ? 'In the tank after the last refill'
-          : 'In the tank after the ${DateFormat('d MMM').format(at)} refill',
+          ? 'In the tank after the last fill-up'
+          : 'In the tank after the ${DateFormat('d MMM').format(at)} fill-up',
       note: avg == null || avg <= 0
           ? 'Add a reading to estimate what is left now'
-          : 'Enough for about ${(after * avg).round()} km from that refill. '
+          : 'Enough for about ${(after * avg).round()} km from that fill-up. '
               'Add a reading to estimate what is left now',
     );
   }
@@ -312,12 +312,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _tiles(colors),
         const SizedBox(height: 14),
         TrendChart(
-          title: 'Mileage, last 12 refills',
+          title: 'Mileage, last 12 full tanks',
           points: trend
               .map((p) => TrendPoint(p.closedAt, p.kmPerLitre))
               .toList(),
           formatValue: (v) => v.toStringAsFixed(1),
-          emptyMessage: 'Appears after 2 completed full-tank segments.',
+          emptyMessage: 'Appears after two full-tank fill-ups.',
         ),
       ],
     ];
@@ -370,7 +370,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 'Since ${DateFormat('E HH:mm').format(since)}',
                               '${_rupees.format(km)} km so far',
                               if (_tripSpend != null)
-                                '₹${_rupees.format(_tripSpend)} spent',
+                                'about ₹${_rupees.format(_tripSpend)} of fuel used',
                             ].join(' · '),
                             style: TextStyle(
                                 color: colors.textSecondary, fontSize: 13)),
@@ -769,11 +769,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final tiles = [
       _Tile(
-        label: 'Cost / km',
+        label: 'Fuel cost per km',
         value: cost.costPerKm == null
             ? '—'
             : '₹${cost.costPerKm!.toStringAsFixed(2)}',
-        caption: 'Fuel only',
+        caption: 'All time',
       ),
       _Tile(
         label: 'This month',

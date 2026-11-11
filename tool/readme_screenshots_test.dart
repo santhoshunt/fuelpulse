@@ -215,9 +215,9 @@ void main() {
   testWidgets('refill', (t) => capture(t, 'refill',
       tab: 1,
       tap: find.textContaining('24 Sep · 16,000 km'),
-      then: find.text('Open refill')));
+      then: find.text('Open fill-up')));
   testWidgets('add fill-up', (t) => capture(t, 'add_fill_up',
-      tab: 1, tap: find.byTooltip('Add refill')));
+      tab: 1, tap: find.byTooltip('Add fill-up')));
   testWidgets('service', (t) => capture(t, 'service', tab: 2));
   testWidgets('analytics', (t) => capture(t, 'analytics', tab: 3));
   testWidgets('analytics service', (t) => capture(t, 'analytics_service',

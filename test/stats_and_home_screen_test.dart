@@ -57,8 +57,8 @@ Future<void> _scrollTo(WidgetTester tester, Finder f) async {
   await tester.pumpAndSettle();
 }
 
-const _kmEmpty = 'Trend appears after 2 completed full-tank segments.';
-const _noBrands = 'Appears once a full-tank segment closes in this period.';
+const _kmEmpty = 'Appears after two full-tank fill-ups.';
+const _noBrands = 'Appears once two full-tank fill-ups fall in this period.';
 
 /// Inside every seeded period: the 6-month windows start in March.
 Widget _analytics() =>
@@ -81,7 +81,7 @@ void main() {
     testWidgets('no logs shows the not-enough-data message', (tester) async {
       await _pumpScreen(tester, _analytics());
       expect(find.text('Not enough data'), findsOneWidget);
-      expect(find.text('FUEL EXPENSES'), findsNothing);
+      expect(find.text('FUEL SPEND'), findsNothing);
     });
 
     testWidgets('one segment shows the mileage chart with its empty message',
@@ -136,7 +136,7 @@ void main() {
         (tester) async {
       await _seed(tester, [_log('a', '2026-06-01', 10000, 30, price: 100)]);
       await _pumpScreen(tester, _analytics());
-      expect(find.text('FUEL EXPENSES'), findsOneWidget);
+      expect(find.text('FUEL SPEND'), findsOneWidget);
       await _scrollTo(tester, find.text(_noBrands));
       expect(find.text(_noBrands), findsOneWidget);
     });
@@ -238,9 +238,9 @@ void main() {
           FuelListScreen(reload: ValueNotifier(0)));
 
       expect(find.text('Indian Oil'), findsWidgets);
-      await tester.tap(find.byTooltip('Add refill'));
+      await tester.tap(find.byTooltip('Add fill-up'));
       await _settle(tester);
-      expect(find.text('Add Fill-up · My vehicle'), findsOneWidget);
+      expect(find.text('Add fill-up · My vehicle'), findsOneWidget);
     });
   });
 
@@ -296,9 +296,9 @@ void main() {
       await _pumpScreen(tester,
           FuelListScreen(reload: ValueNotifier(0)));
 
-      await tester.tap(find.byTooltip('Add refill'));
+      await tester.tap(find.byTooltip('Add fill-up'));
       await _settle(tester);
-      expect(find.text('Add Fill-up · Activa'), findsOneWidget);
+      expect(find.text('Add fill-up · Activa'), findsOneWidget);
     });
 
     testWidgets('Analytics reads only the active vehicle', (tester) async {

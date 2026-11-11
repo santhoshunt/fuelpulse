@@ -70,8 +70,7 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
       // The classic symptom of a missing/mismatched OAuth Android client is
       // a null result with no error — name the likely cause.
       _showSnack(
-        'Google sign-in was cancelled or failed. If this keeps happening, '
-        'the OAuth Android client (package name + SHA-1) may be missing.',
+        "Couldn't sign in to Google. Check your connection and try again.",
       );
     }
     // Full reload — last-backup/error state is account-scoped.
@@ -117,7 +116,7 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
       await widget.onRestored(mode == 'replace');
       if (mounted) {
         _showSnack(
-          'Restored $restored ${restored == 1 ? 'entry' : 'entries'} from '
+          'Restored $restored ${restored == 1 ? 'fill-up' : 'fill-ups'}, and everything with them, from '
           'backup (${DriveBackupService.formatLastBackup(backup.createdAt)}).',
         );
       }
@@ -155,11 +154,9 @@ class _DriveBackupSectionState extends State<DriveBackupSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            "Backs up every vehicle and its fill-ups (including costs), fuel "
-            "types, pump brands and settings to a "
+            'Backs up the same as a backup file does, to a '
             "'${DriveBackupService.folderName}' folder in your Google Drive "
-            'on the chosen schedule. Off until connected — nothing is '
-            'uploaded.',
+            'on the chosen schedule. Nothing is uploaded until you connect.',
             style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 12),

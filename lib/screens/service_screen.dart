@@ -16,6 +16,7 @@ import '../utils/service_schedule.dart';
 import '../utils/vehicle_manager.dart';
 import 'checks_card.dart';
 import 'service_form_screen.dart';
+import 'part_form_screen.dart' show PartsSection;
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
@@ -127,7 +128,10 @@ class _ServiceScreenState extends State<ServiceScreen> {
     });
   }
 
-  Future<void> _open({ServiceRecord? record, List<String> types = const []}) async {
+  Future<void> _open(
+      {ServiceRecord? record,
+      List<String> types = const [],
+      bool toSchedule = false}) async {
     final v = _vehicle;
     if (v == null) return;
     final changed = await Navigator.push<bool>(
@@ -138,6 +142,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
           record: record,
           presetTypeIds: types,
           odometer: _odometer,
+          toSchedule: toSchedule,
         ),
       ),
     );
@@ -156,8 +161,11 @@ class _ServiceScreenState extends State<ServiceScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
-                  if (_vehicle != null)
+                  if (_vehicle != null) ...[
                     ChecksCard(vehicleId: _vehicle!.id, odometer: _odometer),
+                    const SizedBox(height: 12),
+                    PartsSection(vehicleId: _vehicle!.id, odometer: _odometer),
+                  ],
                   if (_services.isEmpty)
                     _empty(colors)
                   else ...[
@@ -299,14 +307,14 @@ class _ServiceScreenState extends State<ServiceScreen> {
                 Expanded(
                   child: FilledButton(
                     onPressed: () => _open(types: r.typeIds),
-                    child: const Text('Mark done'),
+                    child: const Text('Log this service'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _open(record: r),
-                    child: const Text('Reschedule'),
+                    onPressed: () => _open(record: r, toSchedule: true),
+                    child: const Text('Change due date'),
                   ),
                 ),
               ],
