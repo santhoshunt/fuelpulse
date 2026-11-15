@@ -71,6 +71,29 @@ Future<void> _storeReadings(String vehicleId, List<LoggedReading> list) async {
   await prefs.remove(_oldKey(vehicleId));
 }
 
+/// A vehicle's readings as a backup file carries them, newest first.
+Future<List<Map<String, dynamic>>> readingsForBackup(String vehicleId) async => [
+      for (final r in await loadReadings(vehicleId))
+        {'km': r.km, 'at': r.at.toIso8601String(), 'how': r.how},
+    ];
+
+/// One reading from [readingsForBackup]'s shape; throws on a malformed one.
+LoggedReading readingFromBackup(Map m) => (
+      km: (m['km'] as num).toInt(),
+      at: DateTime.parse(m['at'] as String),
+      how: m['how'] as String? ?? 'typed',
+    );
+
+/// Restores a backup's readings for [vehicleId]. Replace swaps the list;
+/// merge adds the readings this phone lacks, matched by their time.
+Future<void> restoreReadings(String vehicleId, List<LoggedReading> readings,
+    {required bool replace}) async {
+  final list = replace ? <LoggedReading>[] : await loadReadings(vehicleId);
+  final have = {for (final r in list) r.at};
+  list.addAll(readings.where((r) => !have.contains(r.at)));
+  await _storeReadings(vehicleId, list);
+}
+
 /// The current reading: the newest one, or null. A reading below the last
 /// fill-up's odometer is stale (a fill-up came after it) and is ignored.
 Future<OdometerReading?> loadReading(String vehicleId) async {

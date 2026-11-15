@@ -13,10 +13,17 @@ class SegmentTrendPoint {
   /// unless every fill whose litres count toward the segment has cost data.
   final double? costPerKm;
 
+  /// The segment's km, and where it was mostly driven: the closing fill's
+  /// [FuelLog.road].
+  final int km;
+  final String? road;
+
   const SegmentTrendPoint({
     required this.closedAt,
     required this.kmPerLitre,
     this.costPerKm,
+    this.km = 0,
+    this.road,
   });
 }
 
@@ -57,6 +64,8 @@ List<SegmentTrendPoint> calculateSegmentTrend(List<FuelLog> chrono) {
           closedAt: closedAt,
           kmPerLitre: segDist / segLiters,
           costPerKm: segSpend != null ? segSpend / segDist : null,
+          km: segDist,
+          road: chrono[i].road,
         ));
       }
     }

@@ -17,6 +17,8 @@ import '../utils/appearance_prefs.dart';
 import '../utils/constants.dart';
 import '../utils/brand_grades.dart';
 import '../utils/custom_pictures.dart';
+import '../utils/gauge_scale.dart';
+import '../utils/odometer_reading.dart';
 import '../utils/vehicle_manager.dart';
 import 'service_reminders.dart';
 
@@ -55,6 +57,15 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
       if (v.icon?.startsWith('file:') ?? false) v.icon!.substring(5),
   ]);
   final prefs = await SharedPreferences.getInstance();
+  // From v4.5.0, per vehicle: odometer readings and a custom gauge scale.
+  final readings = <String, List<Map<String, dynamic>>>{};
+  final gaugeScales = <String, List<double>>{};
+  for (final v in vehicles) {
+    final r = await readingsForBackup(v.id);
+    if (r.isNotEmpty) readings[v.id] = r;
+    final s = await loadGaugeScale(v.id);
+    if (s != null) gaugeScales[v.id] = [s.$1, s.$2];
+  }
   return {
     'app': kBackupApp,
     'version': kBackupVersion,
@@ -74,6 +85,8 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
     'attachments': attachments.map((a) => a.toMap()).toList(),
     // From v4.2.0; older apps ignore it, so the format number stays 5.
     'checks': checks.map((c) => c.toMap()).toList(),
+    'readings': readings,
+    'gaugeScales': gaugeScales,
     // The two flat lists v2.x read; a format 4 file restores from the map.
     'brandGrades': brandGrades,
     // From v3.2.0: your logos and vehicle pictures, as base64 PNGs.
@@ -87,6 +100,10 @@ Future<Map<String, dynamic>> buildBackupPayload() async {
       // which restore ignores: those colours have no palette.
       'paletteId': prefs.getString(kPaletteIdKey),
       'themeMode': prefs.getString(kThemeModeKey),
+      // From v4.5.0: alerts and reminders. Null means the default.
+      'mileageAlertPercent': prefs.getInt(kMileageAlertKey),
+      'lowFuelKm': prefs.getInt(kLowFuelKmKey),
+      'readingReminder': prefs.getString(kReadingReminderKey),
     },
   };
 }
@@ -164,6 +181,25 @@ Future<int> restoreBackup(Map<String, dynamic> data,
       list('attachments', Attachment.fromMap) ?? const <Attachment>[];
   var checks = list('checks', Check.fromMap) ?? const <Check>[];
 
+  // Absent in a file from before v4.5.0.
+  final hasExtras = data['readings'] is Map;
+  final readings = <String, List<LoggedReading>>{};
+  final gaugeScales = <String, (double, double)>{};
+  try {
+    for (final e in (data['readings'] as Map? ?? const {}).entries) {
+      readings['${e.key}'] = [
+        for (final m in e.value as List) readingFromBackup(m as Map),
+      ];
+    }
+    for (final e in (data['gaugeScales'] as Map? ?? const {}).entries) {
+      final s = e.value as List;
+      gaugeScales['${e.key}'] =
+          ((s[0] as num).toDouble(), (s[1] as num).toDouble());
+    }
+  } catch (e) {
+    throw FormatException('Backup contains a malformed odometer reading: $e');
+  }
+
   final db = DatabaseHelper();
   final settings = data['settings'] is Map ? data['settings'] as Map : null;
   if (data['pictures'] is Map) await restorePictures(data['pictures'] as Map);
@@ -201,6 +237,14 @@ Future<int> restoreBackup(Map<String, dynamic> data,
         attachments: attachments,
         checks: checks);
 
+    if (hasExtras) {
+      await clearVehicleExtras();
+      for (final id in kept) {
+        await restoreReadings(id, readings[id] ?? const [], replace: true);
+        await saveGaugeScale(id, gaugeScales[id]);
+      }
+    }
+
     final prefs = await SharedPreferences.getInstance();
     // Pre-vehicle tank capacity belongs to the default vehicle now.
     await prefs.remove(kTankCapacityKey);
@@ -218,6 +262,23 @@ Future<int> restoreBackup(Map<String, dynamic> data,
         await setActiveVehicle(active);
       } else {
         await prefs.remove(kActiveVehicleKey);
+      }
+      // Absent in a file from before v4.5.0, which leaves them as they are;
+      // null means the default.
+      for (final (name, key) in const [
+        ('mileageAlertPercent', kMileageAlertKey),
+        ('lowFuelKm', kLowFuelKmKey),
+        ('readingReminder', kReadingReminderKey),
+      ]) {
+        if (!settings.containsKey(name)) continue;
+        final v = settings[name];
+        if (v is int) {
+          await prefs.setInt(key, v);
+        } else if (v is String) {
+          await prefs.setString(key, v);
+        } else {
+          await prefs.remove(key);
+        }
       }
       final palette = settings['paletteId'];
       final mode = settings['themeMode'];
@@ -283,6 +344,15 @@ Future<int> restoreBackup(Map<String, dynamic> data,
         parts: parts,
         attachments: attachments,
         checks: checks);
+    // Existing wins: a gauge scale set on this phone stays.
+    for (final id in known) {
+      final r = readings[id];
+      if (r != null) await restoreReadings(id, r, replace: false);
+      final s = gaugeScales[id];
+      if (s != null && await loadGaugeScale(id) == null) {
+        await saveGaugeScale(id, s);
+      }
+    }
   }
 
   await ServiceReminders.instance.rescheduleAll();

@@ -10,6 +10,8 @@ import 'package:fuelpulse/models/vehicle.dart';
 import 'package:fuelpulse/services/backup_payload.dart';
 import 'package:fuelpulse/utils/constants.dart';
 import 'package:fuelpulse/utils/brand_grades.dart';
+import 'package:fuelpulse/utils/gauge_scale.dart';
+import 'package:fuelpulse/utils/odometer_reading.dart';
 import 'package:fuelpulse/utils/vehicle_manager.dart';
 
 const _bike = Vehicle(
@@ -241,6 +243,75 @@ void main() {
     );
     expect(await db.getLogById('keep-me'), isNotNull);
     expect(await db.getLogById('future'), isNull);
+  });
+
+  test('readings, gauge scales and alerts round-trip on replace', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await restoreReadings(
+        kDefaultVehicleId,
+        [(km: 1200, at: DateTime(2026, 8, 3), how: 'typed')],
+        replace: true);
+    await saveGaugeScale(kDefaultVehicleId, (10, 30));
+    await prefs.setInt(kLowFuelKmKey, 80);
+    await prefs.setString(kReadingReminderKey, 'off');
+    final payload = await buildBackupPayload();
+
+    // A phone with other values, as a new phone would have.
+    await clearVehicleExtras();
+    await prefs.remove(kLowFuelKmKey);
+    await prefs.setInt(kMileageAlertKey, 25);
+    await restoreReadings(
+        kDefaultVehicleId,
+        [(km: 999, at: DateTime(2026, 7, 1), how: 'typed')],
+        replace: true);
+
+    await restoreBackup(payload, replace: true);
+    expect((await loadReadings(kDefaultVehicleId)).map((r) => r.km), [1200]);
+    expect(await loadGaugeScale(kDefaultVehicleId), (10.0, 30.0));
+    expect(prefs.getInt(kLowFuelKmKey), 80);
+    expect(prefs.getString(kReadingReminderKey), 'off');
+    // Never changed before the backup, so back to the default.
+    expect(prefs.getInt(kMileageAlertKey), isNull);
+  });
+
+  test('merge adds missing readings and keeps this phone\'s gauge scale',
+      () async {
+    await restoreReadings(
+        kDefaultVehicleId,
+        [(km: 1200, at: DateTime(2026, 8, 3), how: 'typed')],
+        replace: true);
+    await saveGaugeScale(kDefaultVehicleId, (10, 30));
+    final payload = await buildBackupPayload();
+
+    await restoreReadings(
+        kDefaultVehicleId,
+        [(km: 1500, at: DateTime(2026, 8, 9), how: 'photo')],
+        replace: true);
+    await saveGaugeScale(kDefaultVehicleId, (12, 24));
+    await restoreBackup(payload, replace: false);
+    await restoreBackup(payload, replace: false); // adds nothing twice
+
+    expect((await loadReadings(kDefaultVehicleId)).map((r) => r.km),
+        [1500, 1200]);
+    expect(await loadGaugeScale(kDefaultVehicleId), (12.0, 24.0));
+  });
+
+  test('a file from before 4.5 leaves readings and alerts alone', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await restoreReadings(
+        kDefaultVehicleId,
+        [(km: 1200, at: DateTime(2026, 8, 3), how: 'typed')],
+        replace: true);
+    await prefs.setInt(kLowFuelKmKey, 80);
+    await restoreBackup({
+      'app': 'fuelpulse',
+      'version': 5,
+      'logs': [_log('1').toMap()],
+      'settings': {'activeVehicleId': kDefaultVehicleId},
+    }, replace: true);
+
+    expect((await loadReadings(kDefaultVehicleId)).map((r) => r.km), [1200]);
+    expect(prefs.getInt(kLowFuelKmKey), 80);
   });
 
   test('wrong app sentinel throws FormatException', () async {

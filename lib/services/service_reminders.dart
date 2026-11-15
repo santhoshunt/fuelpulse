@@ -350,6 +350,27 @@ class ServiceReminders {
           );
         }
         for (final p in await db.getParts(v.id)) {
+          final ends = DateTime.tryParse(p.warrantyUntil ?? '');
+          if (ends != null) {
+            var at = DateTime(ends.year, ends.month, ends.day - 30, 9);
+            if (!at.isAfter(now)) {
+              at = await _catchUp(prefs,
+                      'fuel_warranty_catchup_${p.id}_${p.warrantyUntil}', now, ends) ??
+                  now;
+            }
+            if (at.isAfter(now)) {
+              await _plugin.zonedSchedule(
+                id: _id('warranty${p.id}'),
+                scheduledDate: tz.TZDateTime.from(at.toUtc(), tz.UTC),
+                notificationDetails: _renewals,
+                androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+                title: '${p.label} warranty ends on '
+                    '${DateFormat('d MMM').format(ends)} · ${v.name}',
+                body: 'Claim it before then if it is worn or damaged.',
+                payload: 'fuelpulse://service',
+              );
+            }
+          }
           final due = p.dueDate;
           if (due == null) continue;
           var at = DateTime(due.year, due.month, due.day - 7, 9);

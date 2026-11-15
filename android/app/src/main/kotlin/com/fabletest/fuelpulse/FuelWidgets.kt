@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.view.View
 import android.widget.RemoteViews
+import es.antonborri.home_widget.HomeWidgetBackgroundIntent
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
 
@@ -108,6 +110,23 @@ class TripWidget : HomeWidgetProvider() {
             setTextViewText(R.id.action, d.text("trip_action", "Start"))
             setOnClickPendingIntent(R.id.action, open(c, d.text("trip_link", "fuelpulse://starttrip")))
             setOnClickPendingIntent(R.id.root, open(c, d.text("trip_open", "fuelpulse://trips")))
+        }
+}
+
+class CheckWidget : HomeWidgetProvider() {
+    override fun onUpdate(c: Context, m: AppWidgetManager, ids: IntArray, d: SharedPreferences) =
+        draw(c, m, ids, R.layout.widget_check) {
+            setTextViewText(R.id.cap, "NEXT CHECK · " + d.text("vehicle", "My H'ness"))
+            setTextViewText(R.id.value, d.text("check_title", "No checks yet"))
+            setTextViewText(R.id.sub, d.text("check_sub", "Add one in Garage, Service"))
+            // Done marks the check done in the background, without opening
+            // the app; the app writes no link when there is no check.
+            val done = d.text("check_done")
+            setViewVisibility(R.id.action, if (done.isEmpty()) View.GONE else View.VISIBLE)
+            if (done.isNotEmpty()) {
+                setOnClickPendingIntent(R.id.action, HomeWidgetBackgroundIntent.getBroadcast(c, Uri.parse(done)))
+            }
+            setOnClickPendingIntent(R.id.root, open(c, "fuelpulse://service"))
         }
 }
 

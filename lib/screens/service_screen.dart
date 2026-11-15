@@ -162,7 +162,10 @@ class _ServiceScreenState extends State<ServiceScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
                   if (_vehicle != null) ...[
-                    ChecksCard(vehicleId: _vehicle!.id, odometer: _odometer),
+                    ChecksCard(
+                        vehicleId: _vehicle!.id,
+                        odometer: _odometer,
+                        reload: widget.reload),
                     const SizedBox(height: 12),
                     PartsSection(vehicleId: _vehicle!.id, odometer: _odometer),
                   ],

@@ -87,6 +87,8 @@ class _AppShellState extends State<AppShell>
       _reload.addListener(_refreshWidgetsSoon);
       _refreshWidgetsSoon();
       _widgetTaps = HomeWidget.widgetClicked.listen(_openFromWidget);
+      // Done on the Next check widget, which works with the app closed.
+      unawaited(HomeWidgets.registerTaps());
       HomeWidget.initiallyLaunchedFromHomeWidget().then(_openFromWidget);
     }
     // Scheduled Drive backup, fire-and-forget so it never blocks startup;

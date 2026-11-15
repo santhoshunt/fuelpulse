@@ -16,8 +16,11 @@ import '../utils/page_routes.dart';
 import '../utils/period_filter.dart';
 import '../utils/service_schedule.dart';
 import '../utils/trend_calculator.dart';
+import '../utils/odometer_reading.dart' show loadReadings;
 import '../utils/vehicle_manager.dart';
+import '../utils/weekly_distance.dart';
 import '../widgets/brand_logo.dart';
+import '../widgets/week_bar_chart.dart';
 import '../widgets/month_bar_chart.dart';
 import '../widgets/month_line_chart.dart';
 import '../widgets/period_selector.dart';
@@ -58,6 +61,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   List<ServiceRecord> _services = const [];
   Map<String, ServiceType> _types = const {};
   int? _odometer;
+  List<(DateTime, int)> _odometers = const [];
 
   DateTime get _now => widget.now ?? DateTime.now();
 
@@ -90,10 +94,23 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final services = await _db.getServices(vehicle.id);
     final types = await _db.getServiceTypes();
     final odo = await latestOdometer(vehicle.id);
+    // Every odometer the app knows, for Distance per week.
+    final odometers = [
+      for (final l in chrono)
+        if (DateTime.tryParse(l.timestamp) case final at?) (at, l.odometer),
+      for (final r in await loadReadings(vehicle.id)) (r.at, r.km),
+      for (final t in await _db.getTrips(vehicle.id)) ...[
+        if (DateTime.tryParse(t.startAt) case final at?) (at, t.startOdometer),
+        if ((DateTime.tryParse(t.endAt ?? ''), t.endOdometer)
+            case (final at?, final km?))
+          (at, km),
+      ],
+    ];
     if (!mounted) return;
     setState(() {
       _vehicle = vehicle;
       _chrono = chrono;
+      _odometers = odometers;
       _pumps = {for (final p in pumps) p.id: p};
       _services = services;
       _types = {for (final t in types) t.id: t};
@@ -168,8 +185,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                               ? [_notEnough(colors)]
                               : [
                                   _spendCard(colors),
+                                  ..._distanceCard(colors),
                                   const SizedBox(height: 14),
                                   _mileageCard(),
+                                  ..._roadCard(colors),
                                   ..._priceCard(colors),
                                   ..._pumpCard(colors),
                                   ..._gradeCard(colors),
@@ -344,6 +363,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     ]);
   }
 
+  /// Km driven each week of the period, from every odometer the app knows,
+  /// with the average over the weeks those odometers cover.
+  List<Widget> _distanceCard(AppColors colors) {
+    final r = _range;
+    final clean = cleanOdometer(_odometers);
+    if (clean.length < 2) return const [];
+    final weeks = weeklyDistance(clean, r.from, r.to);
+    final total = weeks.fold<double>(0, (s, w) => s + w.$2);
+    // Weeks the odometers reach, so weeks before the first one or after
+    // the last don't pull the average down.
+    final from = clean.first.$1.isAfter(r.from) ? clean.first.$1 : r.from;
+    final to = clean.last.$1.isBefore(r.to) ? clean.last.$1 : r.to;
+    final covered = math.max(1.0, to.difference(from).inHours / (24 * 7));
+    if (total <= 0) return const [];
+    return [
+      const SizedBox(height: 14),
+      _card([
+        _head('Distance per week',
+            '${_grouped.format((total / covered).round())} km', colors),
+        Text('a week on average · $_periodLabel',
+            style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+        const SizedBox(height: 12),
+        WeekBarChart(weeks: weeks),
+      ]),
+    ];
+  }
+
   Widget _mileageCard() {
     final r = _range;
     final trend = calculateSegmentTrend(_chrono)
@@ -355,6 +401,59 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       formatValue: (v) => v.toStringAsFixed(1),
       emptyMessage: 'Appears after two full-tank fill-ups.',
     );
+  }
+
+  /// Km/L for tanks driven mostly in the city, on the highway or mixed, as
+  /// tagged on the fill-up form. Shown once two kinds have a tank each.
+  List<Widget> _roadCard(AppColors colors) {
+    final r = _range;
+    final km = <String, double>{}, litres = <String, double>{};
+    final tanks = <String, int>{};
+    for (final p in calculateSegmentTrend(_chrono)) {
+      final road = p.road;
+      if (road == null || p.closedAt.isBefore(r.from) || p.closedAt.isAfter(r.to)) {
+        continue;
+      }
+      km[road] = (km[road] ?? 0) + p.km;
+      litres[road] = (litres[road] ?? 0) + p.km / p.kmPerLitre;
+      tanks[road] = (tanks[road] ?? 0) + 1;
+    }
+    if (tanks.length < 2) return const [];
+    final muted = TextStyle(color: colors.textSecondary, fontSize: 13);
+    return [
+      const SizedBox(height: 14),
+      _card([
+        _cap('Mileage by road · $_periodLabel', colors),
+        const SizedBox(height: 4),
+        for (final road in FuelLog.kRoads)
+          if (tanks[road] case final n?)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Expanded(
+                      child: Text(roadLabel(road),
+                          style: TextStyle(
+                              color: colors.textPrimary, fontSize: 15))),
+                  Text('${(km[road]! / litres[road]!).toStringAsFixed(1)} km/L',
+                      style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700)),
+                  SizedBox(
+                    width: 72,
+                    child: Text('$n ${n == 1 ? 'tank' : 'tanks'}',
+                        textAlign: TextAlign.right, style: muted),
+                  ),
+                ],
+              ),
+            ),
+        Text('From full tanks tagged City, Highway or Mixed on the fill-up form.',
+            style: muted.copyWith(fontSize: 12)),
+      ]),
+    ];
   }
 
   /// What each fill-up in the period cost a litre, and how the average

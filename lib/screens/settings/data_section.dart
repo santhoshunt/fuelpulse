@@ -154,9 +154,9 @@ class DataSection extends StatelessWidget {
         Text(
           'A backup file (.json.gz) holds your vehicles, fill-ups, services, '
           'trips, papers, tyres and battery, checks, bills and photos, '
-          'pumps, workshops, brands and the app\'s look. Odometer readings '
-          'and alert settings stay on this phone. The CSV files hold the '
-          'current vehicle\'s fill-ups only.',
+          'odometer readings, Dashboard gauge scales, pumps, workshops, '
+          'brands, alerts and reminders, and the app\'s look. The CSV files '
+          'hold the current vehicle\'s fill-ups only.',
           style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
         ),
       ],

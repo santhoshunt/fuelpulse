@@ -235,6 +235,8 @@ class _RefillDetailScreenState extends State<RefillDetailScreen> {
               '${_grouped.format(_eff!.segmentDistance!.round())} km, '
                   'full tank to full tank'
             ),
+          if (log.road case final road?)
+            ('Mostly driven in', roadLabel(road)),
           if (price != null && kmL != null && kmL > 0)
             ('Fuel cost per km', '₹${(price / kmL).toStringAsFixed(2)}'),
         ],

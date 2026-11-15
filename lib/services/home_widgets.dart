@@ -1,12 +1,16 @@
 import 'dart:io' show Platform;
 import 'dart:math' as math;
+import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart' show DateFormat, NumberFormat;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
+import '../models/check.dart';
+import '../screens/checks_card.dart' show kCheckWidgetDoneKey, markCheckDone;
 import '../screens/service_screen.dart' show dueText, latestOdometer;
 import '../utils/cost_calculator.dart';
 import '../utils/efficiency_calculator.dart';
@@ -15,6 +19,29 @@ import '../utils/service_schedule.dart';
 import '../utils/tank_level_calculator.dart';
 import '../utils/trip_calculator.dart';
 import '../utils/vehicle_manager.dart';
+
+/// Done on the Next check widget, run by home_widget on a background
+/// isolate so the app stays closed. The link names the check and the Done
+/// it replaces; a second tap before the widget redraws finds that Done
+/// already replaced and does nothing.
+@pragma('vm:entry-point')
+Future<void> homeWidgetTapped(Uri? uri) async {
+  if (uri?.host != 'checkdone') return;
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  final id = uri!.queryParameters['id'];
+  final c = (await DatabaseHelper().getEveryCheck())
+      .where((c) => c.id == id)
+      .firstOrNull;
+  if (c == null || c.lastDoneAt != uri.queryParameters['at']) {
+    await HomeWidgets.refresh(chart: false);
+    return;
+  }
+  await markCheckDone(c, await latestOdometer(c.vehicleId));
+  // The app offers Undo for it when it next opens.
+  await (await SharedPreferences.getInstance())
+      .setString(kCheckWidgetDoneKey, c.id);
+}
 
 /// Fills the Android home screen widgets (FuelWidgets.kt) for the active
 /// vehicle and asks them to redraw. Called at launch and whenever the app's
@@ -31,7 +58,32 @@ class HomeWidgets {
     'BestPumpWidget',
     'OdometerWidget',
     'TripWidget',
+    'CheckWidget',
   ];
+
+  /// Lets the Next check widget's Done run [homeWidgetTapped]. Once per
+  /// launch is enough; home_widget keeps the handle.
+  static Future<void> registerTaps() async {
+    if (!supported) return;
+    try {
+      await HomeWidget.registerInteractivityCallback(homeWidgetTapped);
+    } catch (e) {
+      debugPrint('Widget taps failed: $e');
+    }
+  }
+
+  /// "Due in 2 days", "3 days overdue", "220 km left".
+  static String _checkDue(Check c, DateTime now, int? odometer) {
+    final days = c.daysLeft(now), km = c.kmLeft(odometer);
+    if (days != null && days < 0) {
+      return '${-days} ${days == -1 ? 'day' : 'days'} overdue';
+    }
+    if (km != null && km <= 0) return 'Due now';
+    if (days == 0) return 'Due today';
+    if (days != null) return 'Due in $days ${days == 1 ? 'day' : 'days'}';
+    if (km != null) return '${_n.format(km)} km left';
+    return '';
+  }
 
   static final _n = NumberFormat('#,##,##0', 'en_IN');
 
@@ -127,6 +179,25 @@ class HomeWidgets {
             ?.cost;
     final tripSince = trip == null ? null : DateTime.tryParse(trip.startAt);
 
+    // The Next check widget: due ones first, then the soonest by days,
+    // then by km.
+    final now = DateTime.now();
+    final checks = (await db.getChecks(v.id))
+      ..sort((a, b) {
+        int rank(Check c) => c.isDue(now, odo) ? 0 : 1;
+        const far = 1 << 30;
+        return rank(a) != rank(b)
+            ? rank(a) - rank(b)
+            : (a.daysLeft(now) ?? far) != (b.daysLeft(now) ?? far)
+                ? (a.daysLeft(now) ?? far) - (b.daysLeft(now) ?? far)
+                : (a.kmLeft(odo) ?? far) - (b.kmLeft(odo) ?? far);
+      });
+    final check = checks.firstOrNull;
+    final alsoThisWeek = checks
+        .skip(1)
+        .where((c) => c.isDue(now, odo) || (c.daysLeft(now) ?? 8) <= 7)
+        .length;
+
     final dueParts = next == null
         ? const <String>[]
         : [
@@ -189,6 +260,22 @@ class HomeWidgets {
       'trip_open': trip == null
           ? 'fuelpulse://trips'
           : 'fuelpulse://trip?v=${v.id}',
+      'check_title': check?.name ?? 'No checks yet',
+      'check_sub': check == null
+          ? 'Add one in Garage, Service'
+          : [
+              _checkDue(check, now, odo),
+              // Short, and last: a narrow widget or large text cuts the
+              // end of the line, never the due part.
+              if (alsoThisWeek > 0) '$alsoThisWeek more this week',
+            ].where((s) => s.isNotEmpty).join(' · '),
+      // Empty hides Done.
+      'check_done': check == null
+          ? ''
+          : Uri(scheme: 'fuelpulse', host: 'checkdone', queryParameters: {
+              'id': check.id,
+              'at': check.lastDoneAt,
+            }).toString(),
       'odo_value': odo == null ? '—' : '${_n.format(odo)} km',
       'odo_sub': reading == null
           ? 'Tap Update to enter today\'s reading'

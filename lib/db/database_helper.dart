@@ -20,7 +20,7 @@ class DatabaseHelper {
   factory DatabaseHelper() => _instance;
   DatabaseHelper._internal();
 
-  static const int schemaVersion = 7;
+  static const int schemaVersion = 8;
 
   static Database? _database;
 
@@ -84,6 +84,7 @@ class DatabaseHelper {
     await _toV5(db);
     await _toV6(db);
     await _toV7(db);
+    await _toV8(db);
   }
 
   @visibleForTesting
@@ -107,6 +108,17 @@ class DatabaseHelper {
     if (oldVersion < 5) await _toV5(db);
     if (oldVersion < 6) await _toV6(db);
     if (oldVersion < 7) await _toV7(db);
+    if (oldVersion < 8) await _toV8(db);
+  }
+
+  /// Schema 8, additive only: a unit and past values on each check, and
+  /// where each fill-up's tank was mostly driven (city, highway, mixed).
+  static Future<void> _toV8(DatabaseExecutor db) async {
+    await db.execute(
+        "ALTER TABLE checks ADD COLUMN unit TEXT NOT NULL DEFAULT ''");
+    await db.execute(
+        "ALTER TABLE checks ADD COLUMN history TEXT NOT NULL DEFAULT '[]'");
+    await db.execute('ALTER TABLE fuel_logs ADD COLUMN road TEXT');
   }
 
   /// Schema 7, additive only: repeating checks you do yourself.

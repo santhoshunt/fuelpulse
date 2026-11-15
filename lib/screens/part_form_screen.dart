@@ -16,6 +16,28 @@ final _day = DateFormat('yyyy-MM-dd');
 final _shown = DateFormat('d MMM y');
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
 
+/// The warranty line under a tyre or battery: its end date, or the days
+/// left in the last 30 ([soon]). Null without a warranty or once it ended.
+({String text, bool soon})? warrantyLine(Part p, DateTime now) {
+  final ends = DateTime.tryParse(p.warrantyUntil ?? '');
+  if (ends == null) return null;
+  // UTC dates, so a daylight saving change can't make a day 23 hours.
+  final days = DateTime.utc(ends.year, ends.month, ends.day)
+      .difference(DateTime.utc(now.year, now.month, now.day))
+      .inDays;
+  if (days < 0) return null;
+  if (days > 30) return (text: 'Warranty until ${_shown.format(ends)}', soon: false);
+  final when = DateFormat('d MMM').format(ends);
+  return (
+    text: switch (days) {
+      0 => 'Warranty ends today',
+      1 => 'Warranty ends tomorrow, $when',
+      _ => 'Warranty ends in $days days, $when',
+    },
+    soon: true,
+  );
+}
+
 /// A vehicle's tyres and battery with how much of each one's life is used,
 /// as a card on Garage, Service beside Checks.
 class PartsSection extends StatefulWidget {
@@ -173,6 +195,15 @@ class _PartsSectionState extends State<PartsSection> {
                             if (wear != null && wear >= 0.9) 'change soon',
                           ].join(' · '),
                           style: muted),
+                      if (warrantyLine(p, now) case final w?) ...[
+                        const SizedBox(height: 2),
+                        Text(w.text,
+                            style: w.soon
+                                ? muted.copyWith(
+                                    color: colors.warning,
+                                    fontWeight: FontWeight.w600)
+                                : muted),
+                      ],
                     ],
                   );
                 }),

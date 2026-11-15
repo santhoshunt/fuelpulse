@@ -6,11 +6,89 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/database_helper.dart';
 import '../models/check.dart';
+import '../services/home_widgets.dart';
 import '../services/service_reminders.dart';
 import '../theme/app_colors.dart';
 import '../utils/undo_delete.dart';
 
 final _grouped = NumberFormat('#,##,##0', 'en_IN');
+
+/// "15 Nov" for an ISO time, or the text as it is when it won't parse.
+String _dayMonth(String iso) {
+  final at = DateTime.tryParse(iso);
+  return at == null ? iso : DateFormat('d MMM').format(at);
+}
+
+String _dayMonthYear(String iso) {
+  final at = DateTime.tryParse(iso);
+  return at == null ? iso : DateFormat('d MMM y').format(at);
+}
+
+/// After Done: an optional value to keep with it. Pops the trimmed value,
+/// or null for Skip.
+class _ValueSheet extends StatefulWidget {
+  final Check check;
+
+  const _ValueSheet({required this.check});
+
+  @override
+  State<_ValueSheet> createState() => _ValueSheetState();
+}
+
+class _ValueSheetState extends State<_ValueSheet> {
+  final _value = TextEditingController();
+
+  @override
+  void dispose() {
+    _value.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.check;
+    final last = c.history.firstOrNull;
+    return Padding(
+      // Keeps the field above the keyboard.
+      padding: EdgeInsets.fromLTRB(
+          24, 0, 24, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('${c.name} done', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _value,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (v) => Navigator.pop(context, v.trim()),
+            decoration: InputDecoration(
+              labelText: 'Value (optional)',
+              suffixText: c.unit.isEmpty ? null : c.unit,
+              helperText: last == null
+                  ? 'Such as a pressure or a level. Kept with this Done.'
+                  : 'Last time: ${c.withUnit(last.value)}, ${_dayMonth(last.at)}',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Skip')),
+              const SizedBox(width: 8),
+              FilledButton(
+                  onPressed: () => Navigator.pop(context, _value.text.trim()),
+                  child: const Text('Save')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Checks you do yourself on a schedule, for Garage → Service: each with
 /// when it's due and a Done button that resets it.
@@ -20,10 +98,40 @@ class ChecksCard extends StatefulWidget {
   /// The latest odometer, for km-based checks and for Done.
   final int? odometer;
 
-  const ChecksCard({super.key, required this.vehicleId, this.odometer});
+  /// Reloads the card when it fires: on a return to the app, which picks up
+  /// a Done tapped on the Next check widget.
+  final Listenable? reload;
+
+  const ChecksCard(
+      {super.key, required this.vehicleId, this.odometer, this.reload});
 
   @override
   State<ChecksCard> createState() => _ChecksCardState();
+}
+
+/// Where Done keeps the time and km it replaced, so the tick can undo it
+/// until the next Done.
+String _undoKey(String id) => 'fuel_check_undo_$id';
+
+/// The check last marked done on the Next check widget, until the app has
+/// offered Undo for it.
+const kCheckWidgetDoneKey = 'fuel_check_widget_done';
+
+/// Marks [c] done now at [odometer], keeping what it replaced so the tick
+/// can undo it, and returns the check as saved. For Done in the app and on
+/// the Next check widget, which runs with the app closed.
+Future<Check> markCheckDone(Check c, int? odometer) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(
+      _undoKey(c.id), jsonEncode({'at': c.lastDoneAt, 'km': c.lastDoneKm}));
+  final done = c.copyWith(
+    lastDoneAt: DateTime.now().toIso8601String(),
+    lastDoneKm: odometer ?? c.lastDoneKm,
+  );
+  await DatabaseHelper().saveCheck(done);
+  await ServiceReminders.instance.rescheduleAll();
+  await HomeWidgets.refresh(chart: false);
+  return done;
 }
 
 class _ChecksCardState extends State<ChecksCard> {
@@ -34,18 +142,24 @@ class _ChecksCardState extends State<ChecksCard> {
   void initState() {
     super.initState();
     dataRestored.addListener(_load);
+    widget.reload?.addListener(_load);
     _load();
   }
 
   @override
   void dispose() {
     dataRestored.removeListener(_load);
+    widget.reload?.removeListener(_load);
     super.dispose();
   }
 
   @override
   void didUpdateWidget(ChecksCard old) {
     super.didUpdateWidget(old);
+    if (old.reload != widget.reload) {
+      old.reload?.removeListener(_load);
+      widget.reload?.addListener(_load);
+    }
     if (old.vehicleId != widget.vehicleId || old.odometer != widget.odometer) {
       _load();
     }
@@ -53,22 +167,40 @@ class _ChecksCardState extends State<ChecksCard> {
 
   Future<void> _load() async {
     final checks = await _db.getChecks(widget.vehicleId);
-    if (mounted) setState(() => _checks = checks);
+    if (!mounted) return;
+    setState(() => _checks = checks);
+    // A Done tapped on the Next check widget while the app was closed:
+    // say so once, with Undo.
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString(kCheckWidgetDoneKey);
+    final c = checks.where((c) => c.id == id).firstOrNull;
+    if (c == null || !mounted) return;
+    await prefs.remove(kCheckWidgetDoneKey);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('${c.name} marked done on the home screen widget'),
+      persist: false,
+      duration: const Duration(seconds: 6),
+      action: SnackBarAction(label: 'Undo', onPressed: () => _undo(c)),
+    ));
   }
 
-  /// Where Done keeps the time and km it replaced, so the tick can undo it
-  /// until the next Done.
-  static String _undoKey(String id) => 'fuel_check_undo_$id';
-
+  /// Marks [c] done at once, then offers to note a value with it.
   Future<void> _done(Check c) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_undoKey(c.id),
-        jsonEncode({'at': c.lastDoneAt, 'km': c.lastDoneKm}));
-    await _db.saveCheck(c.copyWith(
-      lastDoneAt: DateTime.now().toIso8601String(),
-      lastDoneKm: widget.odometer ?? c.lastDoneKm,
-    ));
-    await ServiceReminders.instance.rescheduleAll();
+    final done = await markCheckDone(c, widget.odometer);
+    await _load();
+    if (!mounted) return;
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _ValueSheet(check: done),
+    );
+    if (value == null || value.isEmpty) return;
+    await _db.saveCheck(done.copyWith(history: [
+      (at: done.lastDoneAt, value: value),
+      ...done.history,
+    ].take(Check.keepValues).toList()));
     await _load();
   }
 
@@ -129,9 +261,12 @@ class _ChecksCardState extends State<ChecksCard> {
     await _db.saveCheck(c.copyWith(
       lastDoneAt: m['at'] as String,
       lastDoneKm: (m['km'] as num).toInt(),
+      // The value noted with the Done being undone goes too.
+      history: [for (final v in c.history) if (v.at != c.lastDoneAt) v],
     ));
     await prefs.remove(_undoKey(c.id));
     await ServiceReminders.instance.rescheduleAll();
+    await HomeWidgets.refresh(chart: false);
     await _load();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -147,6 +282,7 @@ class _ChecksCardState extends State<ChecksCard> {
     );
     if (changed == true) {
       await ServiceReminders.instance.rescheduleAll(ask: true);
+      await HomeWidgets.refresh(chart: false);
       await _load();
     }
   }
@@ -259,6 +395,11 @@ class _ChecksCardState extends State<ChecksCard> {
                                   style: c.isDue(now, widget.odometer)
                                       ? muted.copyWith(color: colors.danger)
                                       : muted),
+                              if (c.history.isNotEmpty)
+                                Text(
+                                    'Last: ${c.withUnit(c.history.first.value)}, '
+                                    '${_dayMonth(c.history.first.at)}',
+                                    style: muted),
                             ],
                           ),
                         ),
@@ -292,13 +433,14 @@ class _CheckDialogState extends State<_CheckDialog> {
       TextEditingController(text: widget.check?.everyDays?.toString() ?? '');
   late final _km =
       TextEditingController(text: widget.check?.everyKm?.toString() ?? '');
+  late final _unit = TextEditingController(text: widget.check?.unit ?? '');
   String? _error;
 
   static const _presets = [
-    ('Tyre pressure', 14, null),
-    ('Chain lube', null, 500),
-    ('Coolant level', 30, null),
-    ('Engine oil level', 30, null),
+    ('Tyre pressure', 14, null, 'psi'),
+    ('Chain lube', null, 500, ''),
+    ('Coolant level', 30, null, ''),
+    ('Engine oil level', 30, null, ''),
   ];
 
   @override
@@ -306,6 +448,7 @@ class _CheckDialogState extends State<_CheckDialog> {
     _name.dispose();
     _days.dispose();
     _km.dispose();
+    _unit.dispose();
     super.dispose();
   }
 
@@ -334,6 +477,7 @@ class _CheckDialogState extends State<_CheckDialog> {
             everyKm: km,
             lastDoneAt: DateTime.now().toIso8601String(),
             lastDoneKm: widget.odometer ?? 0,
+            unit: _unit.text.trim(),
           )
         : c.copyWith(
             name: _name.text.trim(),
@@ -341,6 +485,7 @@ class _CheckDialogState extends State<_CheckDialog> {
             clearEveryDays: days == null,
             everyKm: km,
             clearEveryKm: km == null,
+            unit: _unit.text.trim(),
           ));
     if (mounted) Navigator.pop(context, true);
   }
@@ -358,7 +503,10 @@ class _CheckDialogState extends State<_CheckDialog> {
         await DatabaseHelper().deleteCheck(c.id);
         return const [];
       },
-      changed: ServiceReminders.instance.rescheduleAll,
+      changed: () async {
+        await ServiceReminders.instance.rescheduleAll();
+        await HomeWidgets.refresh(chart: false);
+      },
     );
     navigator.pop(true);
   }
@@ -378,13 +526,14 @@ class _CheckDialogState extends State<_CheckDialog> {
                 spacing: 6,
                 runSpacing: 4,
                 children: [
-                  for (final (name, days, km) in _presets)
+                  for (final (name, days, km, unit) in _presets)
                     ActionChip(
                       label: Text(name),
                       onPressed: () => setState(() {
                         _name.text = name;
                         _days.text = days?.toString() ?? '';
                         _km.text = km?.toString() ?? '';
+                        _unit.text = unit;
                       }),
                     ),
                 ],
@@ -420,6 +569,31 @@ class _CheckDialogState extends State<_CheckDialog> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _unit,
+              decoration: const InputDecoration(
+                  labelText: 'Unit (optional)',
+                  helperText: 'For the value noted on Done, such as psi'),
+            ),
+            if (widget.check?.history.isNotEmpty ?? false) ...[
+              const SizedBox(height: 16),
+              Text('Past values',
+                  style: TextStyle(
+                      color: AppColors.of(context).textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+              for (final v in widget.check!.history)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(_dayMonthYear(v.at))),
+                      Text(widget.check!.withUnit(v.value)),
+                    ],
+                  ),
+                ),
+            ],
           ],
         ),
       ),

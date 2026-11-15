@@ -82,6 +82,14 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_trip_info" />
         </receiver>
+        <receiver android:name=".CheckWidget" android:label="@string/widget_name_check" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_check_info" />
+        </receiver>
+        <!-- The Next check widget's Done, which runs without opening the app. -->
+        <receiver android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver" android:exported="false">
+            <intent-filter><action android:name="es.antonborri.home_widget.action.BACKGROUND" /></intent-filter>
+        </receiver>
         <!-- Serves a PDF bill to the app that opens it (MainActivity.openFile). -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -90,6 +90,9 @@ class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
   String _selectedBrand = 'Shell';
   Map<String, List<String>> _grades = const {};
   bool _fullTank = true;
+
+  /// Where the tank was mostly driven ([FuelLog.kRoads]), or null.
+  String? _road;
   bool _saving = false;
   List<Attachment> _bills = const [];
   List<Attachment> _billsBefore = const [];
@@ -226,6 +229,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
       _syncingCost = false;
       _notesController.text = log.notes;
       _fullTank = log.fullTank;
+      _road = log.road;
       // A brand or grade no longer offered still shows: the log keeps its
       // own strings.
       _grades = grades;
@@ -704,6 +708,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
     final logId = _original?.id ?? FuelLog.generateId();
     final trip = _trip;
     final tripId = trip != null && _onTrip ? trip.id : null;
+    // Only a full tank closes a mileage, so only it keeps the tag.
+    final road = _fullTank ? _road : null;
     try {
       if (_isEdit) {
         final updated = _original!.copyWith(
@@ -726,6 +732,8 @@ class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
           clearPricePerLitre: newPrice == null,
           tripId: tripId,
           clearTripId: tripId == null,
+          road: road,
+          clearRoad: road == null,
         );
         await _db.updateLog(updated);
       } else {
@@ -743,6 +751,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
           totalCost: newTotal,
           pricePerLitre: newPrice,
           tripId: tripId,
+          road: road,
         );
         await _db.insertLog(log);
       }
@@ -876,7 +885,7 @@ class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
   }
 
   @override
-  String formSnapshot() => [_when.toIso8601String(), _isKmMode, _odoController.text, _litersController.text, _priceController.text, _costController.text, _notesController.text, _fullTank, _selectedBrand, _selectedFuelType, _pump?.id, _onTrip, _tripEndsHere, for (final b in _bills) b.id].join('|');
+  String formSnapshot() => [_when.toIso8601String(), _isKmMode, _odoController.text, _litersController.text, _priceController.text, _costController.text, _notesController.text, _fullTank, _road, _selectedBrand, _selectedFuelType, _pump?.id, _onTrip, _tripEndsHere, for (final b in _bills) b.id].join('|');
 
   @override
   Widget build(BuildContext context) => guard(_page(context));
@@ -1133,6 +1142,57 @@ class _EntryFormScreenState extends State<EntryFormScreen> with DiscardGuard {
                   ),
                 ),
               ),
+              if (_fullTank) ...[
+                const SizedBox(height: 12),
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    // Icon and text in line with the Full tank card above.
+                    child: Row(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Icon(Icons.add_road,
+                            color: colors.textSecondary, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                       child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Mostly driven in (optional)',
+                            style: TextStyle(
+                                color: colors.textPrimary, fontSize: 15)),
+                        Text(
+                            'Since the last full tank. Analytics compares '
+                            'your mileage for each.',
+                            style: TextStyle(
+                                color: colors.textSecondary, fontSize: 12)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            for (final r in FuelLog.kRoads)
+                              ChoiceChip(
+                                label: Text(roadLabel(r)),
+                                selected: _road == r,
+                                // Tapping the chosen one again clears it.
+                                onSelected: (on) =>
+                                    setState(() => _road = on ? r : null),
+                              ),
+                          ],
+                        ),
+                      ],
+                       ),
+                      ),
+                     ],
+                    ),
+                  ),
+                ),
+              ],
 
               if (_trip != null) ...[
                 const SizedBox(height: 12),

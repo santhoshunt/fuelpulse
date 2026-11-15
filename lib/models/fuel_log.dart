@@ -2,6 +2,13 @@ import 'dart:math';
 
 import 'vehicle.dart';
 
+/// "City", "Highway" or "Mixed" for a [FuelLog.road].
+String roadLabel(String road) => switch (road) {
+      'city' => 'City',
+      'highway' => 'Highway',
+      _ => 'Mixed',
+    };
+
 class FuelLog {
   final String id;
   final String timestamp;
@@ -33,6 +40,13 @@ class FuelLog {
   /// The [Trip] this fill-up was made on, or null.
   final String? tripId;
 
+  /// Where the tank this fill-up closes was mostly driven: [kRoads], or
+  /// null when not said.
+  final String? road;
+
+  /// The kinds of driving a fill-up can be tagged with, in chip order.
+  static const kRoads = ['city', 'highway', 'mixed'];
+
   FuelLog({
     required this.vehicleId,
     required this.id,
@@ -47,6 +61,7 @@ class FuelLog {
     this.pricePerLitre,
     this.pumpId,
     this.tripId,
+    this.road,
   });
 
   /// Generate a unique ID based on current time + random suffix.
@@ -71,6 +86,7 @@ class FuelLog {
       'vehicleId': vehicleId,
       'pumpId': pumpId,
       'tripId': tripId,
+      'road': road,
     };
   }
 
@@ -94,6 +110,7 @@ class FuelLog {
       pricePerLitre: (map['pricePerLitre'] as num?)?.toDouble(),
       pumpId: map['pumpId'] as String?,
       tripId: map['tripId'] as String?,
+      road: kRoads.contains(map['road']) ? map['road'] as String : null,
     );
   }
 
@@ -115,6 +132,8 @@ class FuelLog {
     bool clearPumpId = false,
     String? tripId,
     bool clearTripId = false,
+    String? road,
+    bool clearRoad = false,
   }) {
     return FuelLog(
       vehicleId: vehicleId ?? this.vehicleId,
@@ -131,6 +150,7 @@ class FuelLog {
           clearPricePerLitre ? null : (pricePerLitre ?? this.pricePerLitre),
       pumpId: clearPumpId ? null : (pumpId ?? this.pumpId),
       tripId: clearTripId ? null : (tripId ?? this.tripId),
+      road: clearRoad ? null : (road ?? this.road),
     );
   }
 

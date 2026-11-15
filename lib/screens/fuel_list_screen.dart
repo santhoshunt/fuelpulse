@@ -3,6 +3,7 @@ import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 
 import '../db/database_helper.dart';
 import '../models/fuel_log.dart';
+import '../models/pump.dart';
 import '../models/vehicle.dart';
 import '../theme/app_colors.dart';
 import '../utils/cost_calculator.dart';
@@ -49,6 +50,35 @@ class _FuelListScreenState extends State<FuelListScreen> {
   String? _marked;
   int _markRun = 0;
 
+  /// The filters under the title; null shows every fill-up. [_date] is a
+  /// year ("2026") or a month ("2026-11").
+  String? _pumpKey, _grade, _date;
+  Map<String, Pump> _pumps = const {};
+
+  bool get _filtered => _pumpKey != null || _grade != null || _date != null;
+
+  /// A fill-up's pump, or its brand for one from before pumps existed.
+  static String _pumpOf(FuelLog l) => l.pumpId ?? 'brand:${l.pumpBrand}';
+
+  String _pumpLabel(String key) => _pumps[key]?.label ??
+      (key.startsWith('brand:') && key.length > 6 ? key.substring(6) : 'Unknown');
+
+  static String? _yearOf(FuelLog l) =>
+      DateTime.tryParse(l.timestamp)?.year.toString();
+  static String? _monthOf(FuelLog l) => switch (DateTime.tryParse(l.timestamp)) {
+        final at? => DateFormat('yyyy-MM').format(at),
+        null => null,
+      };
+
+  List<FuelLog> get _shown => [
+        for (final l in _logs)
+          if ((_pumpKey == null || _pumpOf(l) == _pumpKey) &&
+              (_grade == null || l.fuelType == _grade) &&
+              (_date == null ||
+                  (_date!.length == 4 ? _yearOf(l) : _monthOf(l)) == _date))
+            l,
+      ];
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +114,8 @@ class _FuelListScreenState extends State<FuelListScreen> {
     final id = widget.show?.value;
     if (id == null) return;
     widget.show!.value = null;
+    // A filter could hide the row asked for.
+    if (_filtered) setState(() => _pumpKey = _grade = _date = null);
     // Lets the tab switch bring this tab in first.
     await Future<void>.delayed(const Duration(milliseconds: 350));
     for (var i = 0; i < 30 && mounted; i++) {
@@ -116,8 +148,14 @@ class _FuelListScreenState extends State<FuelListScreen> {
       final vehicle = await loadActiveVehicle();
       final logs = await _db.getAllLogs(vehicle.id);
       final chrono = await _db.getAllLogsChrono(vehicle.id);
+      final pumps = await _db.getPumps();
       if (!mounted) return;
       setState(() {
+        // Another vehicle's fill-ups start unfiltered.
+        if (_vehicle != null && _vehicle!.id != vehicle.id) {
+          _pumpKey = _grade = _date = null;
+        }
+        _pumps = {for (final p in pumps) p.id: p};
         _vehicle = vehicle;
         _logs = logs;
         _eff = calculateEfficiency(chrono);
@@ -178,7 +216,12 @@ class _FuelListScreenState extends State<FuelListScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
                   _header(colors),
-                  if (_logs.isEmpty) _empty(colors) else ..._months(colors),
+                  if (_logs.isEmpty)
+                    _empty(colors)
+                  else ...[
+                    _filters(colors),
+                    ..._months(colors),
+                  ],
                 ],
               ),
       ),
@@ -257,9 +300,170 @@ class _FuelListScreenState extends State<FuelListScreen> {
     );
   }
 
+  /// Pump, fuel grade and date chips, then what the list now shows.
+  Widget _filters(AppColors colors) {
+    final shown = _shown;
+    var spend = 0.0, litres = 0.0, km = 0.0, kmLitres = 0.0;
+    for (final l in shown) {
+      spend += l.totalCost ?? computeTotalCost(l.pricePerLitre, l.liters) ?? 0;
+      litres += l.liters;
+      final e = _eff[l.id];
+      if (e?.value != null && e?.segmentDistance != null && e?.segmentLiters != null) {
+        km += e!.segmentDistance!;
+        kmLitres += e.segmentLiters!;
+      }
+    }
+    Widget chip(String label, bool on, VoidCallback onTap) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: FilterChip(
+            label: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(label),
+              const Icon(Icons.expand_more, size: 18),
+            ]),
+            selected: on,
+            showCheckmark: false,
+            onSelected: (_) => onTap(),
+          ),
+        );
+    final dateLabel = _date == null
+        ? 'All dates'
+        : _date!.length == 4
+            ? _date!
+            : DateFormat('MMM y').format(DateTime.parse('$_date-01'));
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                chip(_pumpKey == null ? 'All pumps' : _pumpLabel(_pumpKey!),
+                    _pumpKey != null, _pickPump),
+                chip(_grade ?? 'All grades', _grade != null, _pickGrade),
+                chip(dateLabel, _date != null, _pickDate),
+                if (_filtered)
+                  TextButton(
+                    onPressed: () =>
+                        setState(() => _pumpKey = _grade = _date = null),
+                    child: const Text('Clear'),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+              shown.isEmpty
+                  ? 'No fill-ups match. Tap Clear to see them all.'
+                  : [
+                      '${shown.length} ${shown.length == 1 ? 'fill-up' : 'fill-ups'}',
+                      if (spend > 0) '₹${_grouped.format(spend)}',
+                      '${_grouped.format(litres.round())} L',
+                      if (kmLitres > 0)
+                        'avg ${(km / kmLitres).toStringAsFixed(1)} km/L',
+                    ].join(' · '),
+              style: TextStyle(color: colors.textSecondary, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  /// A list of choices in a sheet; returns the picked key, or null when
+  /// closed. "All" comes back as the empty string.
+  Future<String?> _choose(String title, List<(String, String, int)> options,
+      String? current) {
+    final colors = AppColors.of(context);
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.7),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                child: Text(title, style: Theme.of(ctx).textTheme.titleMedium),
+              ),
+              for (final (key, label, count) in options)
+                ListTile(
+                  // Months sit under their year.
+                  contentPadding: EdgeInsets.only(
+                      left: key.length == 7 ? 40 : 24, right: 24),
+                  title: Text(label),
+                  subtitle: key.isEmpty
+                      ? null
+                      : Text('$count ${count == 1 ? 'fill-up' : 'fill-ups'}'),
+                  trailing: (current ?? '') == key
+                      ? Icon(Icons.check, color: colors.primary)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, key),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Each key in [keys] with how many fill-ups it has, most first.
+  static List<(String, int)> _counted(Iterable<String?> keys) {
+    final n = <String, int>{};
+    for (final k in keys.whereType<String>()) {
+      n[k] = (n[k] ?? 0) + 1;
+    }
+    return n.entries.map((e) => (e.key, e.value)).toList()
+      ..sort((a, b) => b.$2.compareTo(a.$2));
+  }
+
+  Future<void> _pickPump() async {
+    final picked = await _choose('Pump', [
+      ('', 'All pumps', 0),
+      for (final (k, n) in _counted(_logs.map(_pumpOf))) (k, _pumpLabel(k), n),
+    ], _pumpKey);
+    if (picked != null && mounted) {
+      setState(() => _pumpKey = picked.isEmpty ? null : picked);
+    }
+  }
+
+  Future<void> _pickGrade() async {
+    final picked = await _choose('Fuel grade', [
+      ('', 'All grades', 0),
+      for (final (k, n) in _counted(_logs.map((l) => l.fuelType))) (k, k, n),
+    ], _grade);
+    if (picked != null && mounted) {
+      setState(() => _grade = picked.isEmpty ? null : picked);
+    }
+  }
+
+  /// Years newest first, each followed by its months.
+  Future<void> _pickDate() async {
+    final years = _counted(_logs.map(_yearOf))
+      ..sort((a, b) => b.$1.compareTo(a.$1));
+    final months = _counted(_logs.map(_monthOf))
+      ..sort((a, b) => b.$1.compareTo(a.$1));
+    final picked = await _choose('Date', [
+      ('', 'All dates', 0),
+      for (final (y, n) in years) ...[
+        (y, y, n),
+        for (final (m, c) in months)
+          if (m.startsWith(y))
+            (m, DateFormat('MMMM').format(DateTime.parse('$m-01')), c),
+      ],
+    ], _date);
+    if (picked != null && mounted) {
+      setState(() => _date = picked.isEmpty ? null : picked);
+    }
+  }
+
   List<Widget> _months(AppColors colors) {
     final groups = <String, List<FuelLog>>{};
-    for (final log in _logs) {
+    for (final log in _shown) {
       final at = DateTime.tryParse(log.timestamp);
       final key = at == null ? 'Unknown date' : DateFormat('MMMM y').format(at);
       groups.putIfAbsent(key, () => []).add(log);
