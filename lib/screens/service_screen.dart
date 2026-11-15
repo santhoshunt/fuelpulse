@@ -302,22 +302,16 @@ class _ServiceScreenState extends State<ServiceScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => _open(types: r.typeIds),
-                    child: const Text('Log this service'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _open(record: r, toSchedule: true),
-                    child: const Text('Change due date'),
-                  ),
-                ),
-              ],
+            // Stacked, full width: side by side they wrap on a large text
+            // size.
+            FilledButton(
+              onPressed: () => _open(types: r.typeIds),
+              child: const Text('Log this service'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => _open(record: r, toSchedule: true),
+              child: const Text('Change due date'),
             ),
           ],
         ),
